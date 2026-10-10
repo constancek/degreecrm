@@ -1,0 +1,70 @@
+<!--
+  "Request service" form for cincydegreeofcomfort.com.
+  Paste this block into the site (Squarespace/Wix/WordPress "Code" or "Embed HTML" block, or any HTML page).
+  Submissions create a lead in the CRM (stage New, source Website form) and post to Discord.
+
+  - The page's origin (e.g. https://cincydegreeofcomfort.com) must be listed in INTAKE_ALLOWED_ORIGINS.
+  - Optional spam protection: create a Cloudflare Turnstile widget, set TURNSTILE_SECRET_KEY in the CRM, and
+    uncomment the two Turnstile lines below with your site key.
+-->
+<form id="doc-request" class="doc-form" novalidate>
+  <label>Name <input name="name" autocomplete="name" required /></label>
+  <label>Phone <input name="phone" type="tel" autocomplete="tel" required /></label>
+  <label>Email <input name="email" type="email" autocomplete="email" /></label>
+  <label>Street address <input name="street" autocomplete="street-address" /></label>
+  <label>ZIP <input name="zip" inputmode="numeric" autocomplete="postal-code" /></label>
+  <label>What do you need help with?
+    <select name="service">
+      <option>Heating / cooling</option>
+      <option>Plumbing</option>
+      <option>Electrical</option>
+    </select>
+  </label>
+  <label>Tell us about the problem <textarea name="message" rows="4"></textarea></label>
+  <!-- Honeypot: hidden from people, bots fill it in. Leave it. -->
+  <input name="company_website" tabindex="-1" autocomplete="off" style="position:absolute;left:-9999px" aria-hidden="true" />
+  <!-- <div class="cf-turnstile" data-sitekey="YOUR_TURNSTILE_SITE_KEY"></div> -->
+  <button type="submit">Request service</button>
+  <p class="doc-form-status" role="status"></p>
+</form>
+<!-- <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script> -->
+<script>
+  (function () {
+    var form = document.getElementById("doc-request");
+    var status = form.querySelector(".doc-form-status");
+    form.addEventListener("submit", async function (e) {
+      e.preventDefault();
+      if (!form.name.value.trim() || !form.phone.value.trim()) {
+        status.textContent = "Please enter your name and phone number.";
+        return;
+      }
+      var button = form.querySelector("button");
+      button.disabled = true;
+      status.textContent = "Sending…";
+      try {
+        var res = await fetch("https://app.cincydegreeofcomfort.com/api/intake/web", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(Object.fromEntries(new FormData(form))),
+        });
+        var data = await res.json().catch(function () { return {}; });
+        if (res.ok) {
+          form.reset();
+          status.textContent = "Thanks! We'll call you shortly.";
+        } else {
+          status.textContent = data.error || "Something went wrong. Please call us.";
+        }
+      } catch (err) {
+        status.textContent = "Something went wrong. Please call us.";
+      }
+      button.disabled = false;
+    });
+  })();
+</script>
+<style>
+  .doc-form { display: grid; gap: 12px; max-width: 480px; font: inherit; }
+  .doc-form label { display: grid; gap: 4px; font-weight: 500; }
+  .doc-form input, .doc-form select, .doc-form textarea { font: inherit; padding: 10px; border: 1px solid #ccc; border-radius: 6px; }
+  .doc-form button { padding: 12px; border: 0; border-radius: 6px; background: #1e3a5f; color: #fff; font-weight: 600; cursor: pointer; }
+  .doc-form button:disabled { opacity: 0.6; }
+</style>

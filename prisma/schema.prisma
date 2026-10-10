@@ -1,0 +1,232 @@
+// Degree of Comfort CRM — see SPEC.md "Data model".
+// Conventions: money is integer cents, timestamps are UTC, every table has createdAt/updatedAt.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  owner
+  tech
+}
+
+enum CustomerType {
+  residential
+  commercial
+}
+
+enum Trade {
+  hvac
+  plumbing
+  electrical
+}
+
+enum LeadSource {
+  phone
+  web_form
+  referral
+  repeat_customer
+  mcp
+  other
+}
+
+/// Pipeline stages in order (SPEC.md "Job pipeline"). `lost` is outside the order.
+enum LeadStage {
+  new
+  follow_up
+  estimate_scheduled
+  estimate_sent
+  estimate_approved
+  job_scheduled
+  job_in_progress
+  job_completed
+  invoiced
+  payment_complete
+  review_requested
+  lost
+}
+
+model User {
+  id                 String    @id @default(cuid())
+  name               String
+  email              String    @unique
+  role               Role      @default(tech)
+  phone              String?
+  image              String?
+  active             Boolean   @default(true)
+  /// Encrypted with DATA_ENCRYPTION_KEY. Set when a tech connects Google Calendar (Phase 4).
+  googleRefreshToken String?
+  lastLoginAt        DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  assignedLeads Lead[]       @relation("LeadAssignee")
+  activities    Activity[]
+  oauthCodes    OAuthCode[]
+  oauthTokens   OAuthToken[]
+}
+
+model Customer {
+  id           String       @id @default(cuid())
+  name         String
+  email        String?
+  /// E.164, e.g. +15135550123
+  phone        String?
+  type         CustomerType @default(residential)
+  quickbooksId String?
+  smsOptOut    Boolean      @default(false)
+  notes        String?
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  properties Property[]
+  leads      Lead[]
+  activities Activity[]
+
+  @@index([phone])
+  @@index([email])
+}
+
+model Property {
+  id         String   @id @default(cuid())
+  customerId String
+  street     String
+  unit       String?
+  city       String   @default("Cincinnati")
+  state      String   @default("OH")
+  zip        String?
+  lat        Float?
+  lng        Float?
+  /// Access instructions, equipment on site, etc.
+  notes      String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  leads    Lead[]
+
+  @@index([customerId])
+}
+
+model Lead {
+  id             String     @id @default(cuid())
+  customerId     String
+  propertyId     String?
+  /// Short headline for cards and Discord, e.g. "AC not cooling upstairs".
+  title          String
+  source         LeadSource @default(phone)
+  trade          Trade
+  stage          LeadStage  @default(new)
+  notes          String?
+  assignedToId   String?
+  stageChangedAt DateTime   @default(now())
+  lastActivityAt DateTime   @default(now())
+  lostReason     String?
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+
+  customer   Customer   @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  property   Property?  @relation(fields: [propertyId], references: [id], onDelete: SetNull)
+  assignedTo User?      @relation("LeadAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
+  activities Activity[]
+
+  @@index([stage])
+  @@index([assignedToId])
+  @@index([customerId])
+}
+
+/// Timeline + audit log. Every stage change, note, MCP call and intake writes one.
+model Activity {
+  id         String   @id @default(cuid())
+  /// e.g. lead_created, stage_changed, note, assigned, mcp_call, web_form
+  type       String
+  body       String?
+  data       Json?
+  leadId     String?
+  customerId String?
+  /// Null for system / client actions.
+  userId     String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  lead     Lead?     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  customer Customer? @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  user     User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([leadId, createdAt])
+  @@index([customerId, createdAt])
+}
+
+/// Outbound notifications queue (Discord now; more channels later) so an outage never blocks the app.
+model OutboxEvent {
+  id            String    @id @default(cuid())
+  channel       String
+  payload       Json
+  status        String    @default("pending") // pending | sent | failed
+  attempts      Int       @default(0)
+  nextAttemptAt DateTime  @default(now())
+  lastError     String?
+  sentAt        DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([status, nextAttemptAt])
+}
+
+// ---- OAuth 2.1 authorization server for the MCP connector -----------------
+
+model OAuthClient {
+  /// The client_id handed out by dynamic client registration.
+  id           String   @id
+  name         String?
+  redirectUris String[]
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  codes  OAuthCode[]
+  tokens OAuthToken[]
+}
+
+model OAuthCode {
+  id            String    @id @default(cuid())
+  /// sha256 of the code; the plain code is never stored.
+  codeHash      String    @unique
+  clientId      String
+  userId        String
+  redirectUri   String
+  codeChallenge String
+  scope         String?
+  resource      String?
+  expiresAt     DateTime
+  usedAt        DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  client OAuthClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  user   User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model OAuthToken {
+  id               String    @id @default(cuid())
+  accessTokenHash  String    @unique
+  refreshTokenHash String    @unique
+  clientId         String
+  userId           String
+  scope            String?
+  resource         String?
+  expiresAt        DateTime
+  refreshExpiresAt DateTime
+  revokedAt        DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  client OAuthClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  user   User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
