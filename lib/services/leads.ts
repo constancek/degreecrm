@@ -20,6 +20,7 @@ const leadSummaryInclude = {
   customer: { select: { id: true, name: true, phone: true, email: true, type: true } },
   property: { select: { id: true, street: true, unit: true, city: true, state: true, zip: true } },
   assignedTo: { select: { id: true, name: true } },
+  bookings: { where: { status: "pending" }, select: { date: true, window: true }, take: 1 },
 } satisfies Prisma.LeadInclude;
 
 export type LeadSummary = Prisma.LeadGetPayload<{ include: typeof leadSummaryInclude }>;

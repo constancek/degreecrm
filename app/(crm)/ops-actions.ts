@@ -251,3 +251,28 @@ export async function setIncomeAccountAction(fd: FormData): Promise<void> {
   if (account) await setIncomeAccount(account);
   revalidatePath("/settings");
 }
+
+export async function confirmBookingAction(bookingId: string, leadId: string, _prev: Result | undefined, fd: FormData): Promise<Result> {
+  const user = await requireUser();
+  try {
+    const { confirmBooking } = await import("@/lib/services/booking");
+    await confirmBooking(user, bookingId, { techId: String(fd.get("techId")), date: String(fd.get("date")), window: String(fd.get("window")) });
+  } catch (err) {
+    return fail(err);
+  }
+  refresh(`/leads/${leadId}`, "/pipeline");
+  return { ok: "Confirmed. The customer gets a confirmation text." };
+}
+
+export async function declineBookingAction(bookingId: string, leadId: string, _prev: Result | undefined, fd: FormData): Promise<Result> {
+  const user = await requireUser();
+  try {
+    const { declineBooking } = await import("@/lib/services/booking");
+    const text = String(fd.get("text") ?? "").trim();
+    await declineBooking(user, bookingId, { textCustomer: text || undefined });
+  } catch (err) {
+    return fail(err);
+  }
+  refresh(`/leads/${leadId}`);
+  return { ok: "Declined" };
+}

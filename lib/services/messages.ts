@@ -125,15 +125,8 @@ export async function handleInbound(input: { quoId: string | null; from: string;
   if (input.quoId && (await db.message.findUnique({ where: { quoMessageId: input.quoId } }))) return; // duplicate delivery
 
   const customer = await db.customer.findFirst({ where: { phone }, orderBy: { createdAt: "asc" } });
-  if (!customer) {
-    // Not a customer in the CRM: don't create anything (leads come from the website form, booking and staff).
-    // Just let the team know so someone can answer it in Quo.
-    await db.$transaction((tx) =>
-      enqueueDiscord(tx, { content: `💬 Text from a number not in the CRM, ${formatPhone(phone)}: "${input.body.slice(0, 500)}" (answer it in Quo)` }),
-    );
-    await flushOutboxSoon();
-    return;
-  }
+  // Not a customer in the CRM: ignore it here (it's still in Quo). Leads come from the website, booking and staff.
+  if (!customer) return;
   const lead = await db.lead.findFirst({ where: { customerId: customer.id }, orderBy: { lastActivityAt: "desc" } });
   await db.message.create({
     data: { customerId: customer.id, leadId: lead?.id ?? null, direction: "in", body: input.body, status: "received", quoMessageId: input.quoId },

@@ -49,8 +49,8 @@ export const DEFAULT_SEQUENCES: { key: string; name: string; trigger: string; st
     name: "Estimate booked",
     trigger: "estimate_visit",
     steps: [
-      { anchor: "enrolled", offsetHours: 0, template: "Hi {firstName}, you're booked with {companyName} on {visitTime} for your estimate. {techName} will text when on the way." },
-      { anchor: "visit_start", offsetHours: -24, template: "Reminder: {techName} from {companyName} is coming {visitTime}. Reply here if you need to reschedule." },
+      { anchor: "enrolled", offsetHours: 0, template: "Hi {firstName}, you're confirmed! {companyName} will arrive {visitTime} for your estimate. {techName} will text when on the way." },
+      { anchor: "visit_start", offsetHours: -24, template: "Reminder: {techName} from {companyName} arrives {visitTime}. Reply here if you need to reschedule." },
     ],
   },
   {
@@ -225,6 +225,15 @@ export async function recordDeliveryFailure(enrollmentId: string) {
 
 const DATE_TIME = new Intl.DateTimeFormat("en-US", { timeZone: TZ, weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 const DATE = new Intl.DateTimeFormat("en-US", { timeZone: TZ, month: "long", day: "numeric" });
+const DAY = new Intl.DateTimeFormat("en-US", { timeZone: TZ, weekday: "short", month: "short", day: "numeric" });
+const HOUR_FMT = new Intl.DateTimeFormat("en-US", { timeZone: TZ, hour: "numeric", minute: "2-digit" });
+
+/** "Tue, Oct 14 between 9 AM and 12 PM" for arrival windows, "Tue, Oct 14, 9:30 AM" otherwise. */
+export function visitWhen(start: Date, end: Date) {
+  const hours = (end.getTime() - start.getTime()) / 3_600_000;
+  const t = (d: Date) => HOUR_FMT.format(d).replace(":00", "");
+  return hours === 3 ? `${DAY.format(start)} between ${t(start)} and ${t(end)}` : DATE_TIME.format(start);
+}
 
 export function renderTemplate(template: string, vars: Record<string, string>) {
   return template.replace(/\{(\w+)\}/g, (m, k: string) => (k in vars ? vars[k]! : m)).replace(/\s+/g, " ").trim();
@@ -251,7 +260,7 @@ async function varsFor(leadId: string, visitId: string | null) {
     proposalLink: proposal?.token ? proposalLink(proposal.token) : "",
     expiry: proposal?.expiresAt ? DATE.format(proposal.expiresAt) : "",
     techName: visit?.tech.name.split(/\s+/)[0] ?? "our technician",
-    visitTime: visit ? DATE_TIME.format(visit.start) : "",
+    visitTime: visit ? visitWhen(visit.start, visit.end) : "",
     reviewLink: company.googleReviewUrl,
   };
 }

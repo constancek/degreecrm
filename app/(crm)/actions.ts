@@ -123,3 +123,32 @@ export async function updateLeadAction(leadId: string, _prev: FormState, fd: For
   revalidatePath("/pipeline");
   return {};
 }
+
+// ---- Pipeline drag: do the stage's real work -------------------------------------------
+
+export async function planStageMoveAction(leadId: string, stage: LeadStage) {
+  const user = await requireUser();
+  const { planStageMove } = await import("@/lib/services/stage-moves");
+  try {
+    return { plan: await planStageMove(user, leadId, stage) };
+  } catch (err) {
+    return { error: message(err) };
+  }
+}
+
+export async function performStageMoveAction(
+  leadId: string,
+  stage: LeadStage,
+  payload: import("@/lib/services/stage-moves").StageMovePayload,
+): Promise<{ error?: string }> {
+  const user = await requireUser();
+  const { performStageMove } = await import("@/lib/services/stage-moves");
+  try {
+    await performStageMove(user, leadId, stage, payload);
+  } catch (err) {
+    return { error: message(err) };
+  }
+  revalidatePath("/pipeline");
+  revalidatePath(`/leads/${leadId}`);
+  return {};
+}

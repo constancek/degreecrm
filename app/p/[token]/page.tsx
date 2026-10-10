@@ -16,7 +16,6 @@ import { requestMeta } from "@/lib/server/request-meta";
 import { FreshLinkButton, GateForm, ProposalChooser } from "./client-parts";
 import { SignedView } from "./signed-view";
 import { tokenizeUrl } from "@/lib/integrations/quickbooks";
-import { completeSigning } from "@/lib/services/signing";
 import { depositFor } from "@/lib/services/payments";
 import { getQuickBooksClient } from "@/lib/services/quickbooks-auth";
 
@@ -27,16 +26,10 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false, nocache: true },
 };
 
-export default async function ProposalPage({ params, searchParams }: PageProps<"/p/[token]">) {
+export default async function ProposalPage({ params }: PageProps<"/p/[token]">) {
   const { token } = await params;
-  const { signed: justSigned } = await searchParams;
   const company = await getCompany();
-  let p = await loadByToken(token);
-  // Back from Documenso: confirm the signature right away instead of waiting for the webhook.
-  if (p && justSigned && p.documensoDocumentId && p.status !== "signed") {
-    await completeSigning(p.id).catch((e) => console.error("[sign return]", e));
-    p = await loadByToken(token);
-  }
+  const p = await loadByToken(token);
   const phone = formatPhone(company.phone);
   const callUs = phone ? (
     <a href={`tel:${company.phone}`} className="font-semibold text-brand">
@@ -115,7 +108,6 @@ export default async function ProposalPage({ params, searchParams }: PageProps<"
         token={token}
         termsHref={view.termsVersion ? `/terms/${view.termsVersion}` : null}
         signer={{ name: p.lead.customer.name, email: p.lead.customer.email ?? "" }}
-        waitingForSignature={Boolean(justSigned)}
       />
     </Shell>
   );

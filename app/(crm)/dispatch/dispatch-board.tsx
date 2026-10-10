@@ -35,7 +35,18 @@ type Visit = {
   lng: number | null;
 };
 type Busy = { techId: string; start: number; end: number };
-type Unscheduled = { key: string; leadId: string; jobId: string | null; kind: "job" | "estimate"; customer: string; title: string; address: string; minutes: number };
+type Unscheduled = {
+  key: string;
+  leadId: string;
+  jobId: string | null;
+  kind: "job" | "estimate";
+  customer: string;
+  title: string;
+  address: string;
+  minutes: number;
+  /** Customer's requested day + arrival window (booking request), if any. */
+  requested: string | null;
+};
 
 const FIRST_HOUR = 7;
 const LAST_HOUR = 19;
@@ -188,6 +199,7 @@ function UnscheduledCard({ item }: { item: Unscheduled }) {
       <p className="text-gray-400">
         {item.kind === "job" ? "Job" : "Estimate"} · {item.minutes / 60} h{item.address ? ` · ${item.address.split(",")[0]}` : ""}
       </p>
+      {item.requested && <p className="mt-0.5 font-medium text-amber-700">Requested {item.requested}</p>}
     </li>
   );
 }

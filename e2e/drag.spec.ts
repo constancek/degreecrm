@@ -30,6 +30,7 @@ test("pipeline: dragging a card to Follow up runs the stage automation (drip sta
   const box = (await target.boundingBox())!;
   await drag(page, card, { x: box.x + box.width / 2, y: box.y + 80 });
   await expect(target).toContainText("Drag Pipeline");
+  await page.waitForTimeout(600); // clicks right after a drop are ignored (they'd be the drop itself)
 
   await target.getByRole("link", { name: "Drag Pipeline" }).click();
   await expect(page.getByRole("list", { name: "Activity timeline" })).toContainText("moved it from New to Follow up");

@@ -1,0 +1,26 @@
+<!--
+  "Request an appointment" for cincydegreeofcomfort.com.
+  Paste into the site where the form should appear (an "Embed / Custom HTML / Code" block).
+  The customer picks a day and a 3-hour arrival window; you confirm it in the CRM (lead page or dispatch board),
+  and they get a confirmation text.
+
+  The website's address (https://cincydegreeofcomfort.com and https://www.cincydegreeofcomfort.com) must be in
+  INTAKE_ALLOWED_ORIGINS, or browsers will refuse to show the form inside the page.
+-->
+<iframe
+  id="doc-booking"
+  src="https://go.cincydegreeofcomfort.com/book?embed=1"
+  title="Request an appointment with Degree of Comfort"
+  style="width: 100%; max-width: 720px; height: 1100px; border: 0;"
+  loading="lazy"
+></iframe>
+<script>
+  // Grow the frame to fit the form (no inner scrollbar).
+  window.addEventListener("message", function (e) {
+    if (e.origin !== "https://go.cincydegreeofcomfort.com") return;
+    if (e.data && e.data.type === "doc-booking-height") {
+      document.getElementById("doc-booking").style.height = e.data.height + 20 + "px";
+    }
+  });
+</script>
+<!-- Or simply link to it: https://go.cincydegreeofcomfort.com/book -->

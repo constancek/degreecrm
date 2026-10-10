@@ -14,6 +14,8 @@ import { listLeadProposals } from "@/lib/services/proposals";
 import { db } from "@/lib/db";
 import { leadEnrollments } from "@/lib/services/sequences";
 import { EnrollmentList, ScheduleVisitForm, TextThread, VisitList } from "@/components/ops/ops-forms";
+import { BookingPanel } from "@/components/ops/booking-panel";
+import { bookableDates } from "@/lib/booking";
 import { formatCents } from "@/lib/money";
 
 export const metadata: Metadata = { title: "Lead" };
@@ -25,6 +27,7 @@ export default async function LeadPage({ params }: PageProps<"/leads/[id]">) {
     if (e instanceof NotFoundError) notFound();
     throw e;
   });
+  const booking = await db.bookingRequest.findFirst({ where: { leadId: lead.id, status: "pending" }, orderBy: { createdAt: "desc" } });
   const [staff, proposals, visits, jobs, messages, enrollments] = await Promise.all([
     user.role === "owner" ? listActiveStaff() : Promise.resolve([]),
     listLeadProposals(user, lead.id),
@@ -85,6 +88,21 @@ export default async function LeadPage({ params }: PageProps<"/leads/[id]">) {
             )}
           </div>
         </section>
+
+        {booking && (
+          <BookingPanel
+            bookingId={booking.id}
+            leadId={lead.id}
+            date={booking.date}
+            window={booking.window}
+            altDate={booking.altDate}
+            altWindow={booking.altWindow}
+            techs={staff.map((s) => ({ id: s.id, name: s.name }))}
+            defaultTechId={lead.assignedToId}
+            dates={bookableDates()}
+            canConfirm={user.role === "owner"}
+          />
+        )}
 
         <section className="card p-4">
           <div className="flex items-center justify-between">
@@ -294,6 +312,10 @@ function describeActivity(type: string, data: unknown): string {
       return "sent a text";
     case "sms_failed":
       return "tried to send a text";
+    case "booking_request":
+      return "requested an appointment";
+    case "booking_declined":
+      return "declined the appointment request";
     case "sms_received":
       return "texted us";
     case "sms_opt_out":

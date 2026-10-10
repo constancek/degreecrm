@@ -7,6 +7,8 @@ import { formatCents } from "@/lib/money";
 import { getCompany } from "@/lib/services/company";
 import { currentTerms } from "@/lib/services/terms";
 import { Markdown } from "@/components/markdown/markdown";
+import { signatureFont } from "@/components/proposal/signature-font";
+import { getBlobStore } from "@/lib/integrations/blob";
 import {
   AssumptionsAndExclusions,
   CompanyHeader,
@@ -31,9 +33,20 @@ export default async function PrintProposal({ params, searchParams }: PageProps<
       options: { orderBy: { sortOrder: "asc" }, include: { lineItems: { orderBy: { sortOrder: "asc" } } } },
       lead: { include: { customer: true, property: true } },
       terms: true,
+      signature: true,
     },
   });
   if (!p) notFound();
+  // The signed copy shows the signature (only for the option that was signed).
+  const sig = p.signature?.optionId === optionId ? p.signature : null;
+  const sigImage = sig?.signatureImagePath ? await getBlobStore().get(sig.signatureImagePath) : null;
+  const audit = sig
+    ? await db.activity.findMany({
+        where: { leadId: p.leadId, type: { in: ["proposal_sent", "proposal_viewed", "option_selected", "terms_checked", "proposal_signed"] }, createdAt: { gte: p.sentAt ?? p.createdAt } },
+        orderBy: { createdAt: "asc" },
+        take: 40,
+      })
+    : [];
   const company = await getCompany();
   // Drafts (owner preview) show the current T&C; sent proposals show the version they were sent with.
   const terms = p.terms ?? (await currentTerms());
@@ -89,8 +102,7 @@ export default async function PrintProposal({ params, searchParams }: PageProps<
         </section>
       )}
 
-      {/* Always the last page, with a fixed layout: Documenso's signature fields are placed by
-          position (SIGNATURE_FIELDS in lib/pdf.ts). Letter page, 0.5in margins. */}
+      {/* Acceptance page: blank lines on an unsigned copy; the customer's signature on the signed copy. */}
       <section className="break-before-page" style={{ height: "9in" }}>
         <div style={{ height: "1.5in", overflow: "hidden" }}>
           <h3 className="text-lg font-semibold">Acceptance</h3>
@@ -104,17 +116,104 @@ export default async function PrintProposal({ params, searchParams }: PageProps<
           </p>
         </div>
         <div className="flex" style={{ gap: "0.5in" }}>
-          <div style={{ width: "4.25in", height: "0.8in" }} className="flex flex-col justify-end border-b border-gray-900">
+          <div style={{ width: "4.25in", height: "0.8in" }} className="relative flex flex-col justify-end border-b border-gray-900">
+            {sig?.method === "typed" && (
+              <span className={`${signatureFont.className} absolute bottom-1 left-2 text-4xl leading-none`}>{sig.typedSignature}</span>
+            )}
+            {sigImage && (
+              // eslint-disable-next-line @next/next/no-img-element -- inlined from private storage
+              <img src={`data:image/png;base64,${sigImage.body.toString("base64")}`} alt="Signature" className="absolute bottom-0 left-0 h-full w-auto object-contain" />
+            )}
+            {sig?.method === "paper" && <span className="absolute bottom-1 left-2 text-sm">Signed on paper (recorded by {view.company.name})</span>}
             <span className="-mb-5 text-xs text-gray-500">Customer signature</span>
           </div>
-          <div style={{ width: "2.5in", height: "0.5in" }} className="flex flex-col justify-end border-b border-gray-900">
+          <div style={{ width: "2.5in", height: "0.5in" }} className="relative flex flex-col justify-end border-b border-gray-900">
+            {sig && <span className="absolute bottom-1 left-2 text-sm">{AUDIT_TIME.format(sig.signedAt)}</span>}
             <span className="-mb-5 text-xs text-gray-500">Date</span>
           </div>
         </div>
-        <div style={{ marginTop: "0.4in", width: "4.25in", height: "0.4in" }} className="flex flex-col justify-end border-b border-gray-900">
+        <div style={{ marginTop: "0.4in", width: "4.25in", height: "0.4in" }} className="relative flex flex-col justify-end border-b border-gray-900">
+          {sig && <span className="absolute bottom-1 left-2 text-sm">{sig.signerName}</span>}
           <span className="-mb-5 text-xs text-gray-500">Printed name</span>
         </div>
       </section>
+
+      {sig && (
+        <section className="break-before-page text-sm">
+          <h3 className="text-lg font-semibold">Signature certificate</h3>
+          <p className="mt-1 text-xs text-gray-500">
+            Electronic signature under the U.S. ESIGN Act and the Ohio Uniform Electronic Transactions Act (R.C. Chapter 1306).
+          </p>
+          <dl className="mt-4 grid grid-cols-[2.2in_1fr] gap-x-4 gap-y-1.5">
+            <dt className="text-gray-500">Document</dt>
+            <dd>
+              Proposal v{p.version} for {view.customerName} · {option.title} · {formatCents(option.totalCents, { cents: true })}
+            </dd>
+            <dt className="text-gray-500">Signed by</dt>
+            <dd>
+              {sig.signerName}
+              {sig.signerEmail ? ` <${sig.signerEmail}>` : ""}
+            </dd>
+            <dt className="text-gray-500">Signature</dt>
+            <dd>{sig.method === "drawn" ? "Drawn on screen" : sig.method === "typed" ? "Typed name, adopted as signature" : "Signed on paper, recorded by the company"}</dd>
+            <dt className="text-gray-500">Signed at</dt>
+            <dd>{AUDIT_TIME.format(sig.signedAt)} (Eastern)</dd>
+            {sig.consentAt && (
+              <>
+                <dt className="text-gray-500">Consent to sign electronically</dt>
+                <dd>{AUDIT_TIME.format(sig.consentAt)}</dd>
+              </>
+            )}
+            <dt className="text-gray-500">Terms &amp; Conditions</dt>
+            <dd>
+              Version {sig.termsVersion}, accepted {AUDIT_TIME.format(sig.termsAcceptedAt)}
+            </dd>
+            <dt className="text-gray-500">Identity check</dt>
+            <dd>{sig.phoneVerified ? "Opened the private link texted to the customer and confirmed the last 4 digits of their phone" : "None (recorded by the company)"}</dd>
+            <dt className="text-gray-500">IP address</dt>
+            <dd>{sig.ip ?? "—"}</dd>
+            <dt className="text-gray-500">Device</dt>
+            <dd className="break-all">{sig.userAgent ?? "—"}</dd>
+            <dt className="text-gray-500">Agreement fingerprint</dt>
+            <dd className="font-mono text-xs break-all">SHA-256 {sig.contentHash}</dd>
+          </dl>
+          <h4 className="mt-6 font-semibold">History</h4>
+          <ol className="mt-2 space-y-1 text-xs">
+            {audit.map((a) => {
+              const d = (a.data ?? {}) as { ip?: string };
+              return (
+                <li key={a.id}>
+                  {AUDIT_TIME.format(a.createdAt)} · {AUDIT_LABEL[a.type] ?? a.type}
+                  {a.body ? ` · ${a.body}` : ""}
+                  {d.ip ? ` · IP ${d.ip}` : ""}
+                </li>
+              );
+            })}
+          </ol>
+          <p className="mt-6 text-xs text-gray-500">
+            The fingerprint is calculated from the selected option, its line items and totals, and the full Terms &amp; Conditions text. Any change to those
+            would produce a different fingerprint. The company keeps this record and a SHA-256 hash of this PDF.
+          </p>
+        </section>
+      )}
     </main>
   );
 }
+
+const AUDIT_TIME = new Intl.DateTimeFormat("en-US", {
+  timeZone: "America/New_York",
+  month: "short",
+  day: "numeric",
+  year: "numeric",
+  hour: "numeric",
+  minute: "2-digit",
+  second: "2-digit",
+});
+
+const AUDIT_LABEL: Record<string, string> = {
+  proposal_sent: "Proposal sent",
+  proposal_viewed: "Customer opened the proposal",
+  option_selected: "Customer chose an option",
+  terms_checked: "Customer agreed to the Terms & Conditions",
+  proposal_signed: "Signed",
+};

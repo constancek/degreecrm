@@ -104,6 +104,10 @@ export async function scheduleVisit(actor: Actor, raw: z.input<typeof scheduleIn
       });
     }
     if (!lead.assignedToId) await tx.lead.update({ where: { id: lead.id }, data: { assignedToId: tech.id } });
+    if (input.kind === "estimate") {
+      // However it's booked (confirm button, dispatch drag, slot finder), a pending request is now handled.
+      await tx.bookingRequest.updateMany({ where: { leadId: lead.id, status: "pending" }, data: { status: "confirmed", visitId: v.id } });
+    }
     await recordActivity(tx, actor, {
       type: "visit_scheduled",
       leadId: lead.id,
@@ -164,20 +168,38 @@ export async function rescheduleVisit(
   return getVisit(SYSTEM("internal"), id);
 }
 
-export async function cancelVisit(actor: Actor, id: string, reason?: string) {
-  if (!isOwner(actor)) throw new ForbiddenError("Only the owner cancels visits");
+export async function cancelVisit(
+  actor: Actor,
+  id: string,
+  reason?: string,
+  opts: { notifyCustomer?: boolean; source?: "crm" | "google" } = {},
+) {
+  if (opts.source !== "google" && !isOwner(actor)) throw new ForbiddenError("Only the owner cancels visits");
   const v = await db.visit.findUnique({ where: { id }, include: { lead: { include: { customer: true, property: true, assignedTo: { select: { name: true } } } } } });
   if (!v) throw new NotFoundError("Visit not found");
+  if (v.status === "cancelled") return;
   await db.$transaction(async (tx) => {
-    await tx.visit.update({ where: { id }, data: { status: "cancelled", syncState: "pending" } });
+    await tx.visit.update({
+      where: { id },
+      // A visit deleted in Google has no event left to remove.
+      data: { status: "cancelled", syncState: opts.source === "google" ? "synced" : "pending", googleEventId: opts.source === "google" ? null : undefined },
+    });
     await recordActivity(tx, actor, { type: "visit_cancelled", leadId: v.leadId, body: reason ? `Visit cancelled: ${reason}` : "Visit cancelled", data: { visitId: id } });
     const embed = leadStageEmbed(v.lead);
-    embed.embeds![0]!.title = `Cancelled: ${v.lead.title} (${when(v.start)})`;
+    embed.embeds![0]!.title = `Cancelled: ${v.lead.title} (${when(v.start)})${reason ? ` — ${reason}` : ""}`;
     await enqueueDiscord(tx, embed);
   });
   await stopEnrollments({ visitId: id }, "visit cancelled");
   await flushOutboxSoon();
-  await syncVisitSoon(id);
+  if (opts.notifyCustomer) {
+    const first = v.lead.customer.name.split(/\s+/)[0];
+    await sendCustomerText(actor, {
+      customerId: v.lead.customerId,
+      leadId: v.leadId,
+      body: `Hi ${first}, your Degree of Comfort appointment on ${when(v.start)} has been cancelled. We'll reach out shortly to find a new time.`,
+    });
+  }
+  if (opts.source !== "google") await syncVisitSoon(id);
 }
 
 // ---- Tech status buttons -----------------------------------------------------------
@@ -324,11 +346,9 @@ export async function pollCalendars(now = new Date()) {
         const v = await db.visit.findFirst({ where: { id: e.visitId!, googleEventId: e.id, techId: u.id } });
         if (!v || ["done", "cancelled"].includes(v.status)) continue;
         if (e.status === "cancelled") {
-          // Deleted in Google: don't cancel the job silently; flag it for the owner.
-          await db.visit.update({ where: { id: v.id }, data: { googleEventId: null, syncState: "error", syncError: "Deleted in Google Calendar" } });
-          await db.$transaction((tx) =>
-            enqueueDiscord(tx, { content: `⚠️ ${u.name} deleted the calendar event for a visit on ${when(v.start)}. Check it: ${appUrl()}/leads/${v.leadId}` }),
-          );
+          // Deleted in Google by the tech: cancel the visit and let the customer know.
+          const actor = { kind: "user" as const, id: u.id, role: u.role, name: u.name, email: u.email };
+          await cancelVisit(actor, v.id, `deleted from ${u.name}'s Google Calendar`, { notifyCustomer: true, source: "google" });
           changed++;
           continue;
         }

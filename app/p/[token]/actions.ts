@@ -82,23 +82,23 @@ async function authorizedAny(token: string) {
   return gateCookieValid(p.id, token, cookie) ? p : null;
 }
 
-export async function startSigningAction(
-  token: string,
-  input: { optionId: string; name: string; email: string; termsAccepted: boolean },
-): Promise<{ url?: string; error?: string }> {
+export async function signAction(token: string, input: import("@/lib/services/signing").SignInput): Promise<{ ok?: boolean; error?: string }> {
   const p = await authorized(token);
   if (!p) return { error: "This proposal is no longer available. Please refresh the page." };
-  const { startSigning } = await import("@/lib/services/signing");
+  const { signProposal } = await import("@/lib/services/signing");
   const { ValidationError } = await import("@/lib/services/actor");
   const { ZodError } = await import("zod");
   try {
-    return { url: await startSigning(p, { ...input, termsAccepted: input.termsAccepted as true }, await requestMeta()) };
+    // `authorized` already checked the phone gate cookie for this link.
+    await signProposal(p, input, { ...(await requestMeta()), phoneVerified: true });
   } catch (err) {
     if (err instanceof ZodError) return { error: err.issues[0]?.message ?? "Please check the form" };
     if (err instanceof ValidationError) return { error: err.message };
     console.error("[sign]", err);
-    return { error: "We couldn't start signing just now. Please try again in a minute or call us." };
+    return { error: "We couldn't record your signature just now. Please try again in a minute or call us." };
   }
+  revalidatePath(`/p/${token}`);
+  return { ok: true };
 }
 
 export async function payDepositAction(token: string, cardToken: string): Promise<{ ok?: boolean; error?: string }> {

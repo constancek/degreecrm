@@ -16,7 +16,10 @@ import { STAGES, tradeLabel } from "@/lib/stages";
 import { markDragged, suppressClickAfterDrag } from "@/lib/client/drag-click-guard";
 import { initials, timeAgo } from "@/lib/format";
 import type { LeadStage, Trade } from "@/generated/prisma/enums";
-import { changeStageAction } from "../actions";
+import { changeStageAction, planStageMoveAction } from "../actions";
+import { useRouter } from "next/navigation";
+import { StageMoveDialog } from "./stage-move-dialog";
+import type { StagePlan } from "@/lib/services/stage-moves";
 
 export type BoardLead = {
   id: string;
@@ -27,6 +30,7 @@ export type BoardLead = {
   street: string | null;
   assignee: string | null;
   stageChangedAt: string;
+  requested: string | null;
 };
 
 const TRADE_COLORS: Record<Trade, string> = {
@@ -51,23 +55,29 @@ export function PipelineBoard({ leads, showLost }: { leads: BoardLead[]; showLos
   const dndId = useId();
   const columns = STAGES.filter((s) => s.id !== "lost" || showLost);
 
+  const router = useRouter();
+  const [dialog, setDialog] = useState<{ lead: BoardLead; stage: LeadStage; plan: StagePlan } | null>(null);
+
   function onDragEnd(e: DragEndEvent) {
     const id = String(e.active.id);
     const stage = e.over?.id as LeadStage | undefined;
     const lead = optimistic.find((l) => l.id === id);
     if (!lead || !stage || lead.stage === stage) return;
-
-    let lostReason: string | undefined;
-    if (stage === "lost") {
-      const reason = window.prompt("Why was this lead lost?");
-      if (reason === null) return;
-      lostReason = reason;
-    }
     setError(null);
     startTransition(async () => {
-      moveOptimistic({ id, stage });
-      const res = await changeStageAction(id, stage, lostReason);
-      if (res.error) setError(res.error);
+      // Ask what this stage needs; plain moves happen right away, real work opens a dialog.
+      const res = await planStageMoveAction(id, stage);
+      if (res.error || !res.plan) {
+        setError(res.error ?? "Couldn't move the card");
+        return;
+      }
+      if (res.plan.kind === "simple") {
+        moveOptimistic({ id, stage });
+        const r = await changeStageAction(id, stage);
+        if (r.error) setError(r.error);
+      } else {
+        setDialog({ lead, stage, plan: res.plan });
+      }
     });
   }
 
@@ -90,6 +100,19 @@ export function PipelineBoard({ leads, showLost }: { leads: BoardLead[]; showLos
           ))}
         </div>
       </DndContext>
+      {dialog && (
+        <StageMoveDialog
+          leadId={dialog.lead.id}
+          customer={dialog.lead.customerName}
+          stage={dialog.stage}
+          plan={dialog.plan}
+          onClose={() => setDialog(null)}
+          onDone={() => {
+            setDialog(null);
+            router.refresh();
+          }}
+        />
+      )}
     </>
   );
 }
@@ -133,6 +156,7 @@ function Card({ lead }: { lead: BoardLead }) {
       </Link>
       <p className="mt-0.5 line-clamp-2 text-gray-600">{lead.title}</p>
       {lead.street && <p className="mt-0.5 truncate text-xs text-gray-500">{lead.street}</p>}
+      {lead.requested && <p className="mt-1 text-xs font-medium text-amber-700">Requested {lead.requested}</p>}
       <div className="mt-2 flex items-center gap-2 text-xs">
         <span className={`rounded px-1.5 py-0.5 font-medium ${TRADE_COLORS[lead.trade]}`}>{tradeLabel(lead.trade)}</span>
         <span className="text-gray-400">{timeAgo(lead.stageChangedAt)}</span>

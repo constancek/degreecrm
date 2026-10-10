@@ -24,6 +24,9 @@ export function proxy(request: NextRequest) {
 
   const res = NextResponse.next();
   for (const [k, v] of Object.entries(NOINDEX)) res.headers.set(k, v);
+  // Only the booking form may be embedded, and only on our own website(s). Everything else: no framing.
+  const allowed = (process.env.INTAKE_ALLOWED_ORIGINS ?? "").split(",").map((o) => o.trim()).filter(Boolean).join(" ");
+  res.headers.set("Content-Security-Policy", pathname === "/book" ? `frame-ancestors 'self' ${allowed}` : "frame-ancestors 'none'");
   return res;
 }
 

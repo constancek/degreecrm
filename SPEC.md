@@ -125,7 +125,7 @@ The CRM exposes a remote MCP server so each worker can draft proposals and manag
 
 ## E-signature with Documenso
 
-> **Decision (2026-10-10):** use Documenso's hosted service (app.documenso.com, the existing API key) instead of self-hosting on Railway. Customers sign on Documenso's page and are redirected back (no iframe embed, which needs a paid embedding plan); completion is confirmed both on return and by webhook.
+> **Decision (2026-10-10, revised):** signing is built into the CRM instead of Documenso (embedding Documenso costs $250/mo). The customer signs on the proposal page (drawn or typed), with ESIGN consent, T&C acceptance, the phone check and a full audit certificate in the signed PDF. The rest of this section is kept for history.
 
 Documenso runs as its own Railway service at `sign.cincydegreeofcomfort.com`; the app talks to it only through its REST API and a webhook.
 

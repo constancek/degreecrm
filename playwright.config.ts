@@ -16,7 +16,6 @@ export const E2E_ENV = {
   AI_MOCK: "1",
   MOCK_INTEGRATIONS: "1",
   QUO_WEBHOOK_SECRET: Buffer.from("e2e-quo-signing-key").toString("base64"),
-  DOCUMENSO_WEBHOOK_SECRET: "e2e-documenso-secret",
   ANTHROPIC_API_KEY: "",
   QUO_API_KEY: "",
   BLOB_READ_WRITE_TOKEN: "",

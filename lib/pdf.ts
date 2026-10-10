@@ -34,7 +34,14 @@ export function verifyPrintSignature(proposalId: string, optionId: string, exp: 
   return a.length === b.length && timingSafeEqual(a, b);
 }
 
+let rendererOverride: ((url: string) => Promise<Buffer>) | null = null;
+/** Swap the PDF renderer in tests. */
+export function setPdfRenderer(fn: ((url: string) => Promise<Buffer>) | null) {
+  rendererOverride = fn;
+}
+
 export async function renderUrlToPdf(url: string): Promise<Buffer> {
+  if (rendererOverride) return rendererOverride(url);
   const { chromium } = await import("playwright-core");
   let executablePath: string | undefined;
   let args: string[] | undefined;
@@ -70,7 +77,7 @@ export async function getProposalPdf(proposalId: string, optionId: string, opts:
   const p = await db.proposal.findUniqueOrThrow({ where: { id: proposalId } });
   const company = await getCompany();
   const key = createHash("sha256")
-    .update(JSON.stringify([optionId, p.version, p.termsVersionId, p.status === "draft" ? p.updatedAt : null, company]))
+    .update(JSON.stringify([optionId, p.version, p.termsVersionId, p.status, p.status === "draft" ? p.updatedAt : null, company]))
     .digest("hex")
     .slice(0, 24);
   const blob = getBlobStore();
@@ -87,21 +94,3 @@ export async function getProposalPdf(proposalId: string, optionId: string, opts:
   }
   return pdf;
 }
-
-/** Number of pages in a PDF Chromium produced (uncompressed page tree). */
-export function pdfPageCount(pdf: Buffer): number {
-  const text = pdf.toString("latin1");
-  const counts = [...text.matchAll(/\/Type\s*\/Pages[\s\S]{0,200}?\/Count\s+(\d+)/g)].map((m) => Number(m[1]));
-  if (counts.length) return Math.max(...counts);
-  return (text.match(/\/Type\s*\/Page(?![s\w])/g) ?? []).length;
-}
-
-/**
- * Where the signer fills in, on the last page (the fixed "Acceptance" layout in the print page).
- * Percent of a US Letter page; must match the Acceptance section of app/print/proposal/[id]/page.tsx.
- */
-export const SIGNATURE_FIELDS = {
-  signature: { pageX: 5.88, pageY: 18.18, pageWidth: 50, pageHeight: 7.27 },
-  date: { pageX: 61.76, pageY: 18.18, pageWidth: 29.4, pageHeight: 4.55 },
-  name: { pageX: 5.88, pageY: 29.09, pageWidth: 50, pageHeight: 3.64 },
-};

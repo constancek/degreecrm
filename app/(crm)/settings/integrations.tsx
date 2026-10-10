@@ -66,8 +66,6 @@ export function IntegrationsPanel(props: {
 
       <h3 className="mt-4 text-sm font-semibold">Webhook URLs to paste into each service</h3>
       <dl className="mt-1 grid gap-1 text-xs sm:grid-cols-[140px_1fr]">
-        <dt className="text-gray-500">Documenso</dt>
-        <dd className="break-all">{base}/api/webhooks/documenso (event: Document completed; secret: DOCUMENSO_WEBHOOK_SECRET)</dd>
         <dt className="text-gray-500">Quo</dt>
         <dd className="break-all">{base}/api/webhooks/quo (message received / delivered / failed)</dd>
         <dt className="text-gray-500">Financing email</dt>

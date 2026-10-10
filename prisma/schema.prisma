@@ -143,9 +143,9 @@ model Lead {
   createdAt      DateTime   @default(now())
   updatedAt      DateTime   @updatedAt
 
-  customer    Customer     @relation(fields: [customerId], references: [id], onDelete: Restrict)
-  property    Property?    @relation(fields: [propertyId], references: [id], onDelete: SetNull)
-  assignedTo  User?        @relation("LeadAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
+  customer    Customer         @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  property    Property?        @relation(fields: [propertyId], references: [id], onDelete: SetNull)
+  assignedTo  User?            @relation("LeadAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
   activities  Activity[]
   proposals   Proposal[]
   photos      LeadPhoto[]
@@ -153,6 +153,7 @@ model Lead {
   visits      Visit[]
   enrollments Enrollment[]
   messages    Message[]
+  bookings    BookingRequest[]
 
   @@index([stage])
   @@index([assignedToId])
@@ -378,8 +379,6 @@ model Proposal {
   pdfPath              String?
   pdfKey               String?
   /// E-signature (Documenso)
-  documensoDocumentId  Int?
-  signingUrl           String?
   signedAt             DateTime?
   signedOptionId       String?
   /// When the deposit was recorded (card, check, financing…).
@@ -447,22 +446,35 @@ model LineItem {
 
 // ---- Phase 3: signing and payments ------------------------------------------
 
-/// Mirrors Documenso's audit trail locally so the evidence survives a provider change.
+/// Built-in e-signature (ESIGN / Ohio UETA): who signed what, when, how, with the evidence to show it.
 model Signature {
-  id              String   @id @default(cuid())
-  proposalId      String   @unique
-  optionId        String
-  signerName      String
-  signerEmail     String
-  ip              String?
-  userAgent       String?
-  signedAt        DateTime
-  termsVersion    Int
-  termsAcceptedAt DateTime
-  /// Sealed PDF (with Documenso's signing certificate) in private Blob.
-  signedPdfPath   String?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id                 String    @id @default(cuid())
+  proposalId         String    @unique
+  optionId           String
+  /// drawn | typed | paper (owner recorded a paper signature)
+  method             String
+  /// Typed signatures: the name as typed. Drawn: the image is in private Blob.
+  typedSignature     String?
+  signatureImagePath String?
+  signerName         String
+  signerEmail        String
+  ip                 String?
+  userAgent          String?
+  /// The customer passed the phone-last-4 check on this link.
+  phoneVerified      Boolean   @default(false)
+  consentAt          DateTime?
+  signedAt           DateTime
+  termsVersion       Int
+  termsAcceptedAt    DateTime
+  /// sha256 of what was agreed (option, lines, totals, terms) at signing time.
+  contentHash        String
+  /// Signed PDF (with the audit certificate) in private Blob, and its sha256.
+  signedPdfPath      String?
+  signedPdfHash      String?
+  copySentAt         DateTime?
+  recordedById       String?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
 
   proposal Proposal @relation(fields: [proposalId], references: [id], onDelete: Cascade)
 }
@@ -683,4 +695,28 @@ model Message {
   sentBy     User?       @relation(fields: [sentById], references: [id], onDelete: SetNull)
 
   @@index([customerId, createdAt])
+}
+
+/// A customer's preferred day + 3-hour arrival window, waiting for the owner to confirm.
+model BookingRequest {
+  id        String   @id @default(cuid())
+  leadId    String
+  /// Eastern calendar date, YYYY-MM-DD.
+  date      String
+  /// Arrival window id, e.g. "09-12".
+  window    String
+  altDate   String?
+  altWindow String?
+  /// pending | confirmed | declined
+  status    String   @default("pending")
+  /// website | claude | staff
+  source    String   @default("website")
+  visitId   String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  lead Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@index([status])
+  @@index([leadId])
 }

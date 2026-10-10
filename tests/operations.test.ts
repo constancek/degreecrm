@@ -6,7 +6,7 @@ import { createMockDiscordClient, setDiscordClient } from "@/lib/integrations/di
 import { createMockGeocodingClient, setGeocodingClient } from "@/lib/integrations/google-maps";
 import { createMockQuoClient, setQuoClient } from "@/lib/integrations/quo";
 import { createMemoryBlobStore, setBlobStore } from "@/lib/integrations/blob";
-import { createMockDocumensoClient, setDocumensoClient } from "@/lib/integrations/documenso";
+import { createMockEmailClient, setEmailClient } from "@/lib/integrations/email";
 import { createMockQuickBooksClient } from "@/lib/integrations/quickbooks";
 import { createMockCalendarClient, setCalendarClient } from "@/lib/integrations/google-calendar";
 import { setQuickBooksClient } from "@/lib/services/quickbooks-auth";
@@ -16,7 +16,7 @@ import { saveTerms } from "@/lib/services/terms";
 import { DEFAULT_TAX_RATES, saveTaxRates } from "@/lib/services/tax";
 import { createProposalDraft, sendProposal } from "@/lib/services/proposals";
 import { loadByToken } from "@/lib/services/client-proposals";
-import { completeSigning, startSigning } from "@/lib/services/signing";
+import { recordPaperApproval, signProposal } from "@/lib/services/signing";
 import { chargeDeposit, recordManualDeposit } from "@/lib/services/payments";
 import { pollCalendars, rescheduleVisit, scheduleVisit, syncVisit, updateVisitStatus } from "@/lib/services/visits";
 import { pollInvoices, requestReviews } from "@/lib/services/jobs";
@@ -29,21 +29,21 @@ import { makeUser, resetDb } from "./helpers";
 
 const discord = createMockDiscordClient();
 const quo = createMockQuoClient();
-const documenso = createMockDocumensoClient();
+const email = createMockEmailClient();
 const qbo = createMockQuickBooksClient();
 const calendar = createMockCalendarClient();
 setDiscordClient(discord);
 setQuoClient(quo);
 setBlobStore(createMemoryBlobStore());
-setDocumensoClient(documenso);
+setEmailClient(email);
 setQuickBooksClient(qbo);
 setCalendarClient(calendar);
 setGeocodingClient(createMockGeocodingClient());
 
 // PDF rendering needs a browser; stub it for these service tests.
-import * as pdf from "@/lib/pdf";
-import { vi } from "vitest";
-vi.spyOn(pdf, "getProposalPdf").mockResolvedValue(Buffer.from("%PDF-1.4\n/Type /Pages /Count 3\n"));
+import { setPdfRenderer } from "@/lib/pdf";
+setPdfRenderer(async () => Buffer.from("%PDF-1.4 signed copy"));
+const PNG = Buffer.concat([Buffer.from("89504e470d0a1a0a", "hex"), Buffer.alloc(400, 7)]).toString("base64");
 
 beforeEach(async () => {
   await resetDb();
@@ -79,40 +79,64 @@ async function sentProposal(trade: "hvac" | "plumbing" = "hvac") {
   return { owner, tech, lead, p, optionId: p.options[1]!.id };
 }
 
+const SIGN = { name: "Pat Jones", email: "pat@example.com", termsAccepted: true as const, esignConsent: true as const };
+
 async function signed(trade: "hvac" | "plumbing" = "hvac") {
   const ctx = await sentProposal(trade);
-  await startSigning(ctx.p, { optionId: ctx.optionId, name: "Pat Jones", email: "pat@example.com", termsAccepted: true }, META);
-  const p = await db.proposal.findUniqueOrThrow({ where: { id: ctx.p.id } });
-  documenso.complete(p.documensoDocumentId!);
-  await completeSigning(p.id);
+  await signProposal(ctx.p, { optionId: ctx.optionId, ...SIGN, signature: { type: "typed", text: "Pat Jones" } }, { ...META, phoneVerified: true });
   return ctx;
 }
 
 describe("signing", () => {
-  it("creates a Documenso document with fields on the last page and resumes it", async () => {
-    const { p, optionId } = await sentProposal();
-    const url = await startSigning(p, { optionId, name: "Pat Jones", email: "pat@example.com", termsAccepted: true }, META);
-    expect(url).toMatch(/\/dev\/mock-sign\/\d+$/);
-    const again = await startSigning((await loadByToken(p.token!))!, { optionId, name: "Pat Jones", email: "pat@example.com", termsAccepted: true }, META);
-    expect(again).toBe(url);
-  });
-
-  it("completes: signature row, stage estimate_approved, drips stopped, QuickBooks estimate", async () => {
-    const { p, lead, optionId } = await signed();
+  it("signs on the page: signature + evidence, stage estimate_approved, signed copy emailed and texted", async () => {
+    const { p, lead, optionId } = await sentProposal();
+    email.sent.length = 0;
+    await signProposal(
+      p,
+      { optionId, ...SIGN, signature: { type: "drawn", dataUrl: `data:image/png;base64,${PNG}` } },
+      { ...META, phoneVerified: true },
+    );
     const after = await db.proposal.findUniqueOrThrow({ where: { id: p.id }, include: { signature: true } });
     expect(after.status).toBe("signed");
-    expect(after.signature).toMatchObject({ optionId, signerEmail: "pat@example.com", ip: "1.2.3.4", termsVersion: 1 });
+    expect(after.signature).toMatchObject({
+      optionId,
+      method: "drawn",
+      signerEmail: "pat@example.com",
+      ip: "1.2.3.4",
+      phoneVerified: true,
+      termsVersion: 1,
+      signedPdfPath: expect.stringContaining("signed"),
+    });
+    expect(after.signature!.contentHash).toMatch(/^[0-9a-f]{64}$/);
+    expect(after.signature!.signedPdfHash).toMatch(/^[0-9a-f]{64}$/);
+    expect(after.signature!.consentAt).toBeTruthy();
+    expect(after.signature!.copySentAt).toBeTruthy();
     expect(after.quickbooksEstimateId).toMatch(/^est/);
     expect((await db.lead.findUniqueOrThrow({ where: { id: lead.id } })).stage).toBe("estimate_approved");
     expect(await db.enrollment.count({ where: { leadId: lead.id, status: "active" } })).toBe(0);
-    // Idempotent (webhook + return both call it).
-    expect(await completeSigning(p.id)).toBe(true);
+    expect(email.sent.at(-1)).toMatchObject({ to: "pat@example.com", attachments: [expect.objectContaining({ filename: expect.stringMatching(/\.pdf$/) })] });
+    expect(quo.sent.at(-1)!.content).toContain("Your proposal is signed");
+  });
+
+  it("can't be signed twice, without consent, or with a bad signature image", async () => {
+    const { p, optionId } = await sentProposal();
+    await expect(signProposal(p, { optionId, ...SIGN, esignConsent: false as never, signature: { type: "typed", text: "Pat" } }, { ...META, phoneVerified: true })).rejects.toThrow();
+    await expect(
+      signProposal(p, { optionId, ...SIGN, signature: { type: "drawn", dataUrl: "data:image/png;base64,AAAA" } }, { ...META, phoneVerified: true }),
+    ).rejects.toBeInstanceOf(ValidationError);
+    await signProposal(p, { optionId, ...SIGN, signature: { type: "typed", text: "Pat Jones" } }, { ...META, phoneVerified: true });
+    await expect(signProposal(p, { optionId, ...SIGN, signature: { type: "typed", text: "Pat Jones" } }, { ...META, phoneVerified: true })).rejects.toThrow(
+      /already signed/,
+    );
     expect(await db.signature.count()).toBe(1);
   });
 
-  it("refuses to sign without agreeing to the terms", async () => {
-    const { p, optionId } = await sentProposal();
-    await expect(startSigning(p, { optionId, name: "Pat", email: "pat@example.com", termsAccepted: false as never }, META)).rejects.toThrow();
+  it("owner can record a paper signature", async () => {
+    const { p, owner, optionId, lead } = await sentProposal();
+    await recordPaperApproval(owner, p.id, { optionId, signerName: "Pat Jones", note: "signed at the kitchen table" });
+    const sig = await db.signature.findUniqueOrThrow({ where: { proposalId: p.id } });
+    expect(sig).toMatchObject({ method: "paper", recordedById: owner.id, phoneVerified: false });
+    expect((await db.lead.findUniqueOrThrow({ where: { id: lead.id } })).stage).toBe("estimate_approved");
   });
 });
 
@@ -196,6 +220,21 @@ describe("scheduling, calendar, completion, payment, review", () => {
     void owner;
   });
 
+  it("deleting the event in Google Calendar cancels the visit and texts the customer", async () => {
+    const { owner, tech, lead } = await sentProposal();
+    const start = new Date(Date.now() + 2 * 86_400_000);
+    const v = await scheduleVisit(owner, { leadId: lead.id, kind: "estimate", techId: tech.id, start, end: new Date(start.getTime() + 3 * 3_600_000) });
+    await syncVisit(v.id);
+    const eventId = (await db.visit.findUniqueOrThrow({ where: { id: v.id } })).googleEventId!;
+    await calendar.deleteEvent("rt-tech", eventId); // the tech deletes it in Google
+    await db.user.update({ where: { id: tech.id }, data: { googleCalendarPolledAt: new Date(Date.now() - 10 * 60_000) } });
+    expect(await pollCalendars()).toBe(1);
+    const after = await db.visit.findUniqueOrThrow({ where: { id: v.id } });
+    expect(after.status).toBe("cancelled");
+    expect(quo.sent.at(-1)!.content).toContain("has been cancelled");
+    expect(await db.enrollment.count({ where: { visitId: v.id, status: "active" } })).toBe(0);
+  });
+
   it("reassigning a visit moves the event to the other tech's calendar", async () => {
     const { owner, tech, lead } = await sentProposal();
     const other = await makeUser("tech", "other@test.dev");
@@ -246,15 +285,17 @@ describe("texting", () => {
     expect(await db.enrollment.count({ where: { leadId: lead.id, status: "active" } })).toBe(0);
   });
 
-  it("a text from a number not in the CRM creates nothing, only a Discord note", async () => {
+  it("a text from a number not in the CRM is ignored (stays in Quo)", async () => {
     await sentProposal();
+    const { processOutbox } = await import("@/lib/services/outbox");
+    await processOutbox();
+    discord.sent.length = 0;
     const before = { customers: await db.customer.count(), leads: await db.lead.count() };
     await handleInbound({ quoId: "in_unknown", from: "+15139990000", body: "Hi, do you do furnaces?" });
     expect({ customers: await db.customer.count(), leads: await db.lead.count() }).toEqual(before);
     expect(await db.message.count({ where: { quoMessageId: "in_unknown" } })).toBe(0);
-    const { processOutbox } = await import("@/lib/services/outbox");
     await processOutbox();
-    expect(discord.sent.some((m) => m.content?.includes("not in the CRM"))).toBe(true);
+    expect(discord.sent).toHaveLength(0);
   });
 
   it("an urgent text alerts Discord", async () => {

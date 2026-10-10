@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { formatCents } from "@/lib/money";
 import type { ProposalView } from "@/lib/proposal-view";
 import { CompanyHeader, LineItemTable, TierBadge } from "@/components/proposal/proposal-parts";
@@ -42,7 +42,7 @@ export function SignedView(props: {
               Download signed copy
             </a>
           ) : (
-            <span className="text-gray-600">Your signed copy is on its way to your email.</span>
+            <PreparingCopy />
           )}
         </div>
       </section>
@@ -175,4 +175,19 @@ function CardForm({ token, amountCents, tokenizeUrl, name }: { token: string; am
       </div>
     </form>
   );
+}
+
+/** The signed PDF is rendered right after signing; refresh until it's ready (about 10 seconds). */
+function PreparingCopy() {
+  const router = useRouter();
+  const [tries, setTries] = useState(0);
+  useEffect(() => {
+    if (tries > 12) return;
+    const t = setTimeout(() => {
+      router.refresh();
+      setTries((n) => n + 1);
+    }, 5000);
+    return () => clearTimeout(t);
+  }, [tries, router]);
+  return <span className="text-gray-600">Preparing your signed copy… We&apos;ll also email it to you.</span>;
 }

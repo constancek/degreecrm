@@ -98,8 +98,7 @@ export default async function SettingsPage({ searchParams }: PageProps<"/setting
           }}
           statuses={[
             { label: "Claude", ok: Boolean(process.env.ANTHROPIC_API_KEY), detail: "proposal drafting" },
-            { label: "Documenso", ok: Boolean(process.env.DOCUMENSO_API_KEY), detail: process.env.DOCUMENSO_BASE_URL || "app.documenso.com" },
-            { label: "Documenso webhook secret", ok: Boolean(process.env.DOCUMENSO_WEBHOOK_SECRET), detail: "" },
+            { label: "Email (Resend)", ok: Boolean(process.env.RESEND_API_KEY && process.env.EMAIL_FROM), detail: process.env.EMAIL_FROM ? `signed copies from ${process.env.EMAIL_FROM}` : "signed copies to customers" },
             { label: "Quo texting", ok: Boolean(process.env.QUO_API_KEY && process.env.QUO_INBOX_ID), detail: "" },
             { label: "Quo webhook secret", ok: Boolean(process.env.QUO_WEBHOOK_SECRET), detail: "for incoming texts" },
             { label: "Discord", ok: Boolean(process.env.DISCORD_SERVICE_WEBHOOK_URL), detail: "#degree-service-call" },

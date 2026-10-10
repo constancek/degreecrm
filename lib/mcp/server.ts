@@ -20,6 +20,8 @@ import { db } from "@/lib/db";
 import { formatCents } from "@/lib/money";
 import { listVisits, updateVisitStatus } from "@/lib/services/visits";
 import { addDaysYmd, easternMidnight, easternYmd } from "@/lib/services/dispatch";
+import { WINDOWS, bookableDates, dateLabel, windowLabel } from "@/lib/booking";
+import { confirmBooking, pendingBookings, requestBooking } from "@/lib/services/booking";
 import type { StaffActor } from "@/lib/session";
 
 // The MCP tools call the same service layer as the web UI, so permissions and side effects
@@ -403,6 +405,118 @@ export function buildMcpServer(actor: StaffActor) {
       return { leadId: v.leadId, result: { visitId: v.id, status: v.status } };
     }),
   );
+
+  // ---- Booking ---------------------------------------------------------------
+
+  const windowEnum = z.enum(WINDOWS.map((w) => w.id) as [string, ...string[]]);
+
+  server.registerTool(
+    "booking_windows",
+    {
+      title: "Booking windows",
+      description: "Days (Mon–Sat, tomorrow to 3 weeks out) and the 3-hour arrival windows a customer can request, with how many visits are already booked in each.",
+      inputSchema: {},
+      annotations: { readOnlyHint: true },
+    },
+    run(actor, "booking_windows", async () => {
+      const dates = bookableDates();
+      const from = easternMidnight(dates[0]!.ymd);
+      const to = easternMidnight(addDaysYmd(dates.at(-1)!.ymd, 1));
+      const visits = await db.visit.findMany({ where: { status: { not: "cancelled" }, start: { gte: from, lt: to } }, select: { start: true } });
+      const hourOf = (d: Date) => Number(new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", hour: "numeric", hour12: false }).format(d)) % 24;
+      return {
+        result: dates.map((d) => ({
+          date: d.ymd,
+          label: d.label,
+          windows: WINDOWS.map((w) => ({
+            window: w.id,
+            label: w.label,
+            alreadyBooked: visits.filter((v) => easternYmd(v.start) === d.ymd && hourOf(v.start) >= w.startHour && hourOf(v.start) < w.endHour).length,
+          })),
+        })),
+      };
+    }),
+  );
+
+  server.registerTool(
+    "request_booking",
+    {
+      title: "Request booking",
+      description:
+        "Record a customer's preferred day and 3-hour arrival window for an estimate. Pass leadId for an existing lead, otherwise the customer details " +
+        "to create one. The owner confirms it in the CRM; nothing is promised to the customer until then.",
+      inputSchema: {
+        leadId: z.string().optional(),
+        name: z.string().optional(),
+        phone: z.string().optional(),
+        email: z.string().optional(),
+        street: z.string().optional(),
+        city: z.string().optional(),
+        zip: z.string().optional(),
+        trade: z.enum(TRADE_IDS).optional(),
+        message: z.string().optional().describe("What's going on, in the customer's words"),
+        date: z.string().describe("YYYY-MM-DD from booking_windows"),
+        window: windowEnum,
+        altDate: z.string().optional(),
+        altWindow: windowEnum.optional(),
+      },
+    },
+    run(actor, "request_booking", async (a: Record<string, string | undefined>) => {
+      const r = await requestBooking(actor, a as never, { ip: null, source: "claude" });
+      return {
+        leadId: r.leadId,
+        result: { bookingId: r.id, leadId: r.leadId, requested: `${dateLabel(r.date)}, ${windowLabel(r.window)}`, status: "pending owner confirmation", url: `${appUrl()}/leads/${r.leadId}` },
+      };
+    }),
+  );
+
+  if (actor.role === "owner") {
+    server.registerTool(
+      "list_booking_requests",
+      {
+        title: "List booking requests",
+        description: "Pending appointment requests waiting for confirmation, plus the team (tech ids) to assign.",
+        inputSchema: {},
+        annotations: { readOnlyHint: true },
+      },
+      run(actor, "list_booking_requests", async () => {
+        const [list, team] = await Promise.all([pendingBookings(), db.user.findMany({ where: { active: true }, select: { id: true, name: true, role: true } })]);
+        return {
+          result: {
+            requests: list.map((b) => ({
+              bookingId: b.id,
+              leadId: b.leadId,
+              customer: b.lead.customer.name,
+              address: formatAddress(b.lead.property) || null,
+              job: b.lead.title,
+              requested: `${dateLabel(b.date)}, ${windowLabel(b.window)}`,
+              date: b.date,
+              window: b.window,
+              secondChoice: b.altDate ? `${dateLabel(b.altDate)}, ${windowLabel(b.altWindow)}` : null,
+              assignedTechId: b.lead.assignedToId,
+            })),
+            team,
+          },
+        };
+      }),
+    );
+
+    server.registerTool(
+      "confirm_booking",
+      {
+        title: "Confirm booking",
+        description:
+          "Owner only. Confirm a booking request (optionally a different date/window), assigning a tech. Books the estimate visit on the tech's calendar " +
+          "and texts the customer their confirmed arrival window. Confirm with the user before calling.",
+        inputSchema: { bookingId: z.string(), techId: z.string(), date: z.string().optional(), window: windowEnum.optional() },
+        annotations: { openWorldHint: true },
+      },
+      run(actor, "confirm_booking", async ({ bookingId, techId, date, window }: { bookingId: string; techId: string; date?: string; window?: string }) => {
+        const v = await confirmBooking(actor, bookingId, { techId, date, window });
+        return { leadId: v.leadId, result: { visitId: v.id, tech: v.tech.name, start: v.start.toISOString(), end: v.end.toISOString() } };
+      }),
+    );
+  }
 
   // ---- Resources -------------------------------------------------------------
 

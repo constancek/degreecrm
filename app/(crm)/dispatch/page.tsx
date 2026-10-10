@@ -3,6 +3,7 @@ import { requireOwner } from "@/lib/session";
 import { addDaysYmd, boardData, easternMidnight, easternYmd } from "@/lib/services/dispatch";
 import { formatAddress } from "@/lib/notifications/discord-embeds";
 import { DispatchBoard } from "./dispatch-board";
+import { dateLabel, windowLabel } from "@/lib/booking";
 
 export const metadata: Metadata = { title: "Dispatch" };
 
@@ -54,17 +55,23 @@ export default async function DispatchPage({ searchParams }: PageProps<"/dispatc
           title: j.title,
           address: formatAddress(j.lead.property),
           minutes: Math.round(j.durationHours * 60),
+          requested: null,
         })),
-        ...data.leadsNeedingEstimate.map((l) => ({
-          key: `lead:${l.id}`,
-          leadId: l.id,
-          jobId: null,
-          kind: "estimate" as const,
-          customer: l.customer.name,
-          title: l.title,
-          address: formatAddress(l.property),
-          minutes: 60,
-        })),
+        ...data.leadsNeedingEstimate.map((l) => {
+          const b = l.bookings[0];
+          return {
+            key: `lead:${l.id}`,
+            leadId: l.id,
+            jobId: null,
+            kind: "estimate" as const,
+            customer: l.customer.name,
+            title: l.title,
+            address: formatAddress(l.property),
+            // A requested arrival window books as the whole 3 hours.
+            minutes: b ? 180 : 60,
+            requested: b ? `${dateLabel(b.date)}, ${windowLabel(b.window)}` : null,
+          };
+        }),
       ]}
     />
   );

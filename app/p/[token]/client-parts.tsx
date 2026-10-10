@@ -12,7 +12,9 @@ import {
   ProposalIntro,
   TierBadge,
 } from "@/components/proposal/proposal-parts";
-import { freshLinkAction, gateAction, selectOptionAction, startSigningAction, termsCheckedAction } from "./actions";
+import { freshLinkAction, gateAction, selectOptionAction, signAction, termsCheckedAction } from "./actions";
+import { useRouter } from "next/navigation";
+import { SignaturePad, type SignatureValue } from "./signature-pad";
 
 export function GateForm({ token, kind }: { token: string; kind: "phone" | "email" }) {
   const [state, action, pending] = useActionState(gateAction.bind(null, token), undefined);
@@ -62,14 +64,13 @@ export function ProposalChooser({
   token,
   termsHref,
   signer,
-  waitingForSignature,
 }: {
   view: ProposalView;
   token: string;
   termsHref: string | null;
   signer: { name: string; email: string };
-  waitingForSignature: boolean;
 }) {
+  const router = useRouter();
   const [selected, setSelected] = useState<string | null>(view.selectedOptionId);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [agreed, setAgreed] = useState(false);
@@ -78,13 +79,26 @@ export function ProposalChooser({
   const [name, setName] = useState(signer.name);
   const [email, setEmail] = useState(signer.email);
   const [signing, startSigning] = useTransition();
+  const [signature, setSignature] = useState<SignatureValue | null>(null);
+  const [consent, setConsent] = useState(false);
 
   function sign() {
     if (!chosen) return;
     setError(null);
+    if (!signature) {
+      setError("Please draw or type your signature.");
+      return;
+    }
     startSigning(async () => {
-      const res = await startSigningAction(token, { optionId: chosen.id, name, email, termsAccepted: agreed });
-      if (res.url) window.location.href = res.url;
+      const res = await signAction(token, {
+        optionId: chosen.id,
+        name,
+        email,
+        termsAccepted: agreed as true,
+        esignConsent: consent as true,
+        signature,
+      });
+      if (res.ok) router.refresh();
       else setError(res.error ?? "Something went wrong.");
     });
   }
@@ -195,45 +209,57 @@ export function ProposalChooser({
             </span>
           </label>
           {agreed && (
-            <div className="mt-4 grid gap-3 sm:grid-cols-2">
-              <div>
-                <label className="label" htmlFor="signer-name">
-                  Your full name
-                </label>
-                <input id="signer-name" className="input" value={name} onChange={(e) => setName(e.target.value)} autoComplete="name" />
+            <div className="mt-4 space-y-4">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div>
+                  <label className="label" htmlFor="signer-name">
+                    Your full name
+                  </label>
+                  <input id="signer-name" className="input" value={name} onChange={(e) => setName(e.target.value)} autoComplete="name" />
+                </div>
+                <div>
+                  <label className="label" htmlFor="signer-email">
+                    Email for your signed copy
+                  </label>
+                  <input
+                    id="signer-email"
+                    className="input"
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    autoComplete="email"
+                  />
+                </div>
               </div>
-              <div>
-                <label className="label" htmlFor="signer-email">
-                  Email for your signed copy
-                </label>
-                <input
-                  id="signer-email"
-                  className="input"
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  autoComplete="email"
-                />
-              </div>
+              <SignaturePad name={name} onChange={setSignature} />
+              <label className="flex items-start gap-3 text-sm">
+                <input type="checkbox" className="mt-0.5 h-5 w-5" checked={consent} onChange={(e) => setConsent(e.target.checked)} />
+                <span>
+                  I agree to sign electronically. My electronic signature is legally binding, the same as signing on paper, and I agree to get this
+                  agreement and related records electronically.
+                </span>
+              </label>
             </div>
           )}
           <div className="mt-4 flex flex-wrap items-center gap-3">
-            <button className="btn-primary px-6 py-3 text-base" disabled={!agreed || signing} onClick={sign}>
-              {signing ? "Preparing your document…" : "Approve & sign"}
+            <button className="btn-primary px-6 py-3 text-base" disabled={!agreed || !consent || !signature || signing} onClick={sign}>
+              {signing ? "Signing…" : "Approve & sign"}
             </button>
             <a href={`/p/${token}/pdf`} className="btn-secondary">
               Download PDF
             </a>
           </div>
           <p className="mt-2 text-xs text-gray-500">
-            {agreed ? "You'll sign securely with Documenso and come right back here for the deposit." : "Check the box above to continue."}
+            {!agreed
+              ? "Check the box above to continue."
+              : !signature
+                ? "Sign in the box above."
+                : !consent
+                  ? "Agree to sign electronically to continue."
+                  : "We'll email you a signed copy right away."}
           </p>
+          {error && <p className="mt-2 rounded-md bg-red-50 p-2 text-sm text-red-700">{error}</p>}
         </section>
-      )}
-      {waitingForSignature && (
-        <p className="mt-4 rounded-md bg-amber-50 p-3 text-sm text-amber-800">
-          We&apos;re still waiting for the signature to finish. If you completed signing, refresh this page in a minute.
-        </p>
       )}
 
       <AssumptionsAndExclusions view={view} />

@@ -27,3 +27,8 @@ export function clientUrl(): string {
   const app = new URL(appUrl());
   return `${app.protocol}//${host}${app.port ? `:${app.port}` : ""}`;
 }
+
+/** In-process mocks for QuickBooks, Google Calendar and email (tests / offline dev). Never in production. */
+export function mockIntegrations(): boolean {
+  return process.env.MOCK_INTEGRATIONS === "1" && process.env.VERCEL_ENV !== "production";
+}

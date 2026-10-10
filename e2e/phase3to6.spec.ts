@@ -18,24 +18,35 @@ const ymd = (d: Date) => new Intl.DateTimeFormat("en-CA", { timeZone: "America/N
 test.describe.configure({ mode: "serial" });
 
 test("customer signs and pays the deposit; owner schedules; tech completes; invoice goes out", async ({ page, browser }) => {
+  test.setTimeout(120_000); // long flow, and the signed PDF is rendered by headless Chrome
   const link = await demoLink(page);
 
-  // ---- Customer: choose, agree, sign (mock Documenso), pay by card (mock Intuit) ----
+  // ---- Customer: choose, agree, sign on the page, pay by card (mock Intuit) ----
   const phone = await browser.newContext({ viewport: { width: 390, height: 844 } });
   const c = await phone.newPage();
   await c.goto(link);
   await c.getByLabel(/last 4 digits/).fill("0112");
   await c.getByRole("button", { name: "View proposal" }).click();
   await c.locator('[data-option="better"]').getByRole("button", { name: "Choose this option" }).click();
-  await c.getByRole("checkbox").check();
+  await c.getByLabel(/agree to the full/).check();
   await expect(c.getByLabel("Your full name")).toHaveValue("James & Linda Porter");
   await c.getByLabel("Email for your signed copy").fill("porters@example.com");
+  // Draw a signature on the pad.
+  const pad = c.getByLabel("Signature pad: draw your signature");
+  await pad.scrollIntoViewIfNeeded();
+  const box = (await pad.boundingBox())!;
+  await c.mouse.move(box.x + 30, box.y + 100);
+  await c.mouse.down();
+  for (let i = 1; i <= 20; i++) await c.mouse.move(box.x + 30 + i * 10, box.y + 100 - Math.sin(i / 2) * 30);
+  await c.mouse.up();
+  await expect(c.getByRole("button", { name: "Approve & sign" })).toBeDisabled(); // consent still needed
+  await c.getByLabel(/I agree to sign electronically/).check();
   await c.getByRole("button", { name: "Approve & sign" }).click();
-  await c.waitForURL(/\/dev\/mock-sign\//);
-  await c.getByRole("button", { name: "Complete signing" }).click();
-  await c.waitForURL(/\/p\/.+\?signed=1/);
   await expect(c.getByText("Approved and signed")).toBeVisible();
-  await expect(c.getByRole("link", { name: "Download signed copy" })).toBeVisible();
+  await expect(c.getByRole("link", { name: "Download signed copy" })).toBeVisible({ timeout: 60_000 });
+  const [dl] = await Promise.all([c.waitForEvent("download"), c.getByRole("link", { name: "Download signed copy" }).click()]);
+  const { readFileSync } = await import("node:fs");
+  expect(readFileSync((await dl.path())!).subarray(0, 4).toString()).toBe("%PDF");
 
   await c.getByLabel("Card number").fill("4111 1111 1111 1111");
   await c.getByLabel("Expires (MM/YY)").fill("12/30");
@@ -126,6 +137,4 @@ test("texts: one-off text, signed inbound webhook, sequences editor", async ({ p
   await first.getByRole("button", { name: "Save" }).click();
   await expect(first.getByText("Saved")).toBeVisible();
 
-  const doc = await request.post("/api/webhooks/documenso", { headers: { "x-documenso-secret": "wrong" }, data: { event: "DOCUMENT_COMPLETED" } });
-  expect(doc.status()).toBe(401);
 });

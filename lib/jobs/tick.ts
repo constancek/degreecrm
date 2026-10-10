@@ -7,6 +7,7 @@ import { ensureDefaultSequences, processDueEnrollments } from "@/lib/services/se
 import { pollCalendars, syncPendingVisits } from "@/lib/services/visits";
 import { pollInvoices, requestReviews } from "@/lib/services/jobs";
 import { refreshTokens } from "@/lib/services/quickbooks-auth";
+import { retrySignedCopies } from "@/lib/services/signing";
 
 const HOUR = 3_600_000;
 const automation = SYSTEM("Automation");
@@ -64,6 +65,7 @@ export async function runTick(now = new Date()) {
     calendarPoll: await step("calendarPoll", () => pollCalendars(now)),
     invoices: await step("invoices", () => (now.getUTCMinutes() % 10 === 0 ? pollInvoices() : Promise.resolve(0))),
     reviews: await step("reviews", () => requestReviews(now)),
+    signedCopies: await step("signedCopies", () => retrySignedCopies()),
     quickbooks: await step("quickbooks", () => keepQuickBooksAlive(now)),
     outbox: await step("outbox", () => processOutbox(50)),
   };

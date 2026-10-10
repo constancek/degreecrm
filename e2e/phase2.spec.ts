@@ -70,7 +70,7 @@ test("owner sets up company + price book, drafts with Claude, prices, sends; cus
   await expect(c.locator("#approve")).toContainText("Deposit due on approval");
   const terms = c.getByRole("link", { name: "Terms & Conditions" });
   await expect(terms).toHaveAttribute("href", /\/terms\/\d+/);
-  await c.getByRole("checkbox").check();
+  await c.getByLabel(/agree to the full/).check();
 
   const [download] = await Promise.all([c.waitForEvent("download"), c.getByRole("link", { name: "Download PDF" }).click()]);
   const pdf = readFileSync((await download.path())!);

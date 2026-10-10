@@ -1,4 +1,4 @@
-import { mockIntegrations } from "@/lib/integrations/documenso";
+import { mockIntegrations } from "@/lib/env";
 
 // Stands in for Intuit's card tokenization endpoint when MOCK_INTEGRATIONS=1 (tests).
 export async function POST(req: Request) {

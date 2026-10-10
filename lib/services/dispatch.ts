@@ -41,8 +41,13 @@ export async function boardData(actor: Actor, opts: { from: Date; to: Date }) {
       orderBy: { createdAt: "asc" },
     }),
     db.lead.findMany({
-      where: { stage: { in: ["new", "follow_up"] }, visits: { none: { kind: "estimate", status: { notIn: ["cancelled"] } } } },
-      include: { customer: true, property: true },
+      where: {
+        OR: [
+          { stage: { in: ["new", "follow_up"] }, visits: { none: { kind: "estimate", status: { notIn: ["cancelled"] } } } },
+          { bookings: { some: { status: "pending" } } },
+        ],
+      },
+      include: { customer: true, property: true, bookings: { where: { status: "pending" }, take: 1 } },
       orderBy: { createdAt: "asc" },
       take: 50,
     }),

@@ -3,6 +3,7 @@ import Link from "next/link";
 import { requireUser } from "@/lib/session";
 import { listBoardLeads } from "@/lib/services/leads";
 import { PipelineBoard, type BoardLead } from "./pipeline-board";
+import { dateLabel, windowLabel } from "@/lib/booking";
 
 export const metadata: Metadata = { title: "Pipeline" };
 
@@ -21,6 +22,7 @@ export default async function PipelinePage({ searchParams }: PageProps<"/pipelin
     street: l.property?.street ?? null,
     assignee: l.assignedTo?.name ?? null,
     stageChangedAt: l.stageChangedAt.toISOString(),
+    requested: l.bookings[0] ? `${dateLabel(l.bookings[0].date)}, ${windowLabel(l.bookings[0].window)}` : null,
   }));
 
   return (

@@ -175,6 +175,21 @@ export async function pollInvoices(limit = 30) {
   return paid;
 }
 
+/** Texts the review link (if set), moves the lead to review_requested, enrolls HVAC in maintenance. */
+export async function sendReviewRequest(leadId: string, actor: Actor = SYSTEM("Reviews")) {
+  const lead = await db.lead.findUniqueOrThrow({ where: { id: leadId }, include: { customer: true } });
+  const company = await getCompany();
+  if (company.googleReviewUrl) {
+    await sendCustomerText(actor, {
+      customerId: lead.customerId,
+      leadId: lead.id,
+      body: `Hi ${lead.customer.name.split(/\s+/)[0]}, thank you for choosing ${company.name}! If we did a great job, would you leave us a quick review? ${company.googleReviewUrl}`,
+    });
+  }
+  await changeStage(actor, lead.id, "review_requested");
+  if (lead.trade === "hvac") await enroll("maintenance", lead.id);
+}
+
 /** Scheduler: the morning after payment, ask for a review and enroll HVAC customers in maintenance. */
 export async function requestReviews(now = new Date()) {
   const etHour = Number(new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", hour: "numeric", hour12: false }).format(now)) % 24;
@@ -182,21 +197,10 @@ export async function requestReviews(now = new Date()) {
   const startOfTodayEt = new Date(now.getTime() - etHour * 3_600_000 - now.getMinutes() * 60_000);
   const leads = await db.lead.findMany({
     where: { stage: "payment_complete", stageChangedAt: { lt: startOfTodayEt } },
-    include: { customer: true },
     take: 50,
+    select: { id: true },
   });
-  const company = await getCompany();
-  for (const lead of leads) {
-    if (company.googleReviewUrl) {
-      await sendCustomerText(SYSTEM("Reviews"), {
-        customerId: lead.customerId,
-        leadId: lead.id,
-        body: `Hi ${lead.customer.name.split(/\s+/)[0]}, thank you for choosing ${company.name}! If we did a great job, would you leave us a quick review? ${company.googleReviewUrl}`,
-      });
-    }
-    await changeStage(SYSTEM("Reviews"), lead.id, "review_requested");
-    if (lead.trade === "hvac") await enroll("maintenance", lead.id);
-  }
+  for (const lead of leads) await sendReviewRequest(lead.id);
   if (leads.length) {
     await db.$transaction((tx) => enqueueDiscord(tx, { content: `⭐ Review requests sent to ${leads.length} customer(s).` }));
     await flushOutboxSoon();

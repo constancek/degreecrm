@@ -47,13 +47,15 @@ skills/                   Claude skills to upload to the org (proposal, my-day)
 worker/index.ts           `npm run worker`: same tick on a 60 s loop (local / non-Vercel hosts)
 lib/services/*            business rules. UI, MCP and intake all call these; never put rules in routes/components
 lib/integrations/<svc>.ts typed client + mock per external service: discord, google-maps (geocode, routes), claude,
-                          claude-text, quo, blob, documenso, quickbooks, google-calendar
-lib/services/signing.ts   Documenso start/complete; payments.ts deposits + QBO; jobs.ts completion/invoice/review;
+                          claude-text, quo, blob, email (Resend), quickbooks, google-calendar
+lib/services/signing.ts   built-in e-signature + signed copy; booking.ts requests/confirm; stage-moves.ts pipeline
+                          drag actions; payments.ts deposits + QBO; jobs.ts completion/invoice/review;
                           visits.ts scheduling + calendar sync; dispatch.ts board + slot finder; messages.ts +
                           sequences.ts texting; financing.ts Acorn emails; quickbooks-auth.ts OAuth tokens
 lib/jobs/tick.ts          every-minute scheduler (Vercel Cron / npm run worker); each step fails independently
 app/(crm)/ops-actions.ts  server actions for visits, payments, invoices, texts, sequences, slot finder
-app/api/webhooks/*        documenso (X-Documenso-Secret), quo (openphone-signature HMAC), financing (?secret=)
+app/api/webhooks/*        quo (openphone-signature HMAC), financing (?secret=)
+app/book                  public booking request form (go. host, embeddable: only /book may be framed)
 lib/notifications/*       message builders (Discord embeds)
 prisma/schema.prisma      models; prisma/seed.ts demo data
 tests/                    Vitest (unit + service tests against degreecrm_test)
@@ -83,8 +85,13 @@ e2e/                      Playwright happy paths (production build on :3100 agai
   sent proposal gets a revision. T&C are versioned rows (`TermsVersion`), never edited in place.
 - Sales tax: `taxForProperty` = county row, else statewide row; geocodes the property if the county is unknown.
 - Files go through `getBlobStore()` (private Vercel Blob, or `.blobdata/` locally). Never public URLs.
-- `MOCK_INTEGRATIONS=1` swaps Documenso, QuickBooks and Google Calendar for in-process mocks (e2e uses it; mock
-  pages live at /dev/mock-sign and /api/dev/qbo-token and 404 otherwise). Never set it in production.
+- `MOCK_INTEGRATIONS=1` swaps QuickBooks, Google Calendar and email for in-process mocks (e2e uses it; the Intuit
+  tokenizer stand-in at /api/dev/qbo-token 404s otherwise). Never set it in production. `setPdfRenderer` stubs Chromium in tests.
+- Signing is built in (no third party): consent + T&C + phone gate + drawn/typed signature → `Signature` row with
+  `contentHash`; the signed PDF (print page + certificate page) is rendered after the response, hashed, emailed and texted.
+- Pipeline drags call `planStageMove` (what the stage needs) then `performStageMove` (does it). Backward moves are plain.
+- Booking requests: customer picks a day + 3-hour window (lib/booking.ts); any estimate `scheduleVisit` confirms the
+  pending request. Texts from numbers not in the CRM are ignored. Deleting an event in Google cancels the visit + texts.
 - Stage moves after signing: signed → estimate_approved; deposit doesn't move the stage (creates the Job); a job visit
   → job_scheduled; Start → job_in_progress; last visit done → job_completed → invoiced → payment_complete →
   review_requested. Drips start/stop in `onLeadStageChanged` (sequences.ts), called from `changeStage`.

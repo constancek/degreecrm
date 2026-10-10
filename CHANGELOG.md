@@ -1,5 +1,22 @@
 # Changelog
 
+## Signing, booking and drag actions (2026-10-10)
+
+- **Built-in e-signature** replaces Documenso: signature pad (draw or type) on the proposal page, separate consent to
+  sign electronically, T&C acceptance and phone check recorded; signed PDF with the signature, an audit certificate
+  page and agreement fingerprint (SHA-256), stored with its own hash, emailed (Resend) and texted to the customer.
+  Owner can record a paper signature. Documenso code, webhook and columns removed.
+- **Booking requests:** embeddable form at go.…/book (docs/website-booking.html): preferred day + 3-hour arrival
+  window (9–12, 12–3, 3–6, Mon–Sat, up to 3 weeks) and an optional second choice. Owner confirms on the lead page,
+  dispatch board or pipeline drag; confirmation books the window and texts the customer. Claude tools
+  `booking_windows`, `request_booking`, `list_booking_requests`, `confirm_booking` + skills/booking.
+- **Pipeline drags do the stage's work** (book estimate, send proposal, record approval/deposit, schedule job, start,
+  complete + invoice, invoice, record payment, review request) via a dialog; backward moves are plain.
+- Deleting a visit's event in Google Calendar cancels the visit and texts the customer.
+- Texts from numbers not in the CRM are ignored (no lead, no Discord post).
+- QuickBooks: choose the income account CRM sales post to. Dispatch drag fixes (drop at the pointer, links no longer
+  hijack drags or open after a drop).
+
 ## Phases 3–6: Sign + pay, scheduling, dispatch, texting (2026-10-10)
 
 - **Sign:** "Approve & sign" on the client page creates a Documenso document from the selected-option PDF (fixed
