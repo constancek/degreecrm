@@ -4,9 +4,27 @@ import { classifySite, hostnameOf, isClientPath } from "@/lib/hosts";
 // Nothing on any host should be indexed: the CRM is behind login and client pages are private links.
 const NOINDEX = { "X-Robots-Tag": "noindex, nofollow, noarchive" };
 
+// Common spellings of the public policy pages (any capitalization, trailing slash) → the real path.
+const POLICY_ALIASES: Record<string, string> = {
+  "/privacy": "/privacy",
+  "/privacy-policy": "/privacy",
+  "/privacypolicy": "/privacy",
+  "/terms": "/terms-of-service",
+  "/tos": "/terms-of-service",
+  "/terms-of-service": "/terms-of-service",
+  "/termsofservice": "/terms-of-service",
+  "/terms-and-conditions": "/terms-of-service",
+};
+
 export function proxy(request: NextRequest) {
   const site = classifySite(hostnameOf(request.headers.get("host")));
   const { pathname } = request.nextUrl;
+
+  const alias = site !== "unknown" ? POLICY_ALIASES[pathname.toLowerCase().replace(/\/+$/, "")] : undefined;
+  if (alias && alias !== pathname) {
+    // Build from the Host header so the redirect stays on the host the visitor used.
+    return NextResponse.redirect(`${request.nextUrl.protocol}//${request.headers.get("host")}${alias}${request.nextUrl.search}`, 308);
+  }
 
   if (site === "client") {
     if (pathname === "/robots.txt") {
