@@ -17,8 +17,10 @@ export function pkceChallenge(verifier: string): string {
 function key(): Buffer {
   const raw = process.env.DATA_ENCRYPTION_KEY;
   if (!raw) throw new Error("DATA_ENCRYPTION_KEY is not set");
-  const buf = Buffer.from(raw, "base64");
-  if (buf.length !== 32) throw new Error("DATA_ENCRYPTION_KEY must be 32 bytes, base64-encoded");
+  const trimmed = raw.trim();
+  // Accept `openssl rand -hex 32` or `openssl rand -base64 32`.
+  const buf = /^[0-9a-f]{64}$/i.test(trimmed) ? Buffer.from(trimmed, "hex") : Buffer.from(trimmed, "base64");
+  if (buf.length !== 32) throw new Error("DATA_ENCRYPTION_KEY must be 32 bytes (64 hex chars or base64)");
   return buf;
 }
 
