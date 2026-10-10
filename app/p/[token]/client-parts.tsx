@@ -268,7 +268,10 @@ export function ProposalChooser({
 
       <footer className="mt-10 border-t border-gray-200 pt-4 text-center text-xs text-gray-500">
         Questions? Call {view.company.phone || view.company.name}
-        {view.company.email ? ` or email ${view.company.email}` : ""}. Proposal v{view.version}.
+        {view.company.email ? ` or email ${view.company.email}` : ""}. Proposal v{view.version}.{" "}
+        <a href="/privacy" className="underline">
+          Privacy Policy
+        </a>
       </footer>
     </div>
   );

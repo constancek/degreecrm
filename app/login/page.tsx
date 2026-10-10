@@ -73,6 +73,11 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
             </button>
           </form>
         )}
+        <p className="mt-6 text-center text-xs text-gray-500">
+          <a href="/privacy" className="underline">
+            Privacy Policy
+          </a>
+        </p>
       </div>
     </main>
   );

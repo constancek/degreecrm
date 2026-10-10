@@ -136,7 +136,13 @@ export function BookingForm({ dates, embedded }: { dates: { ymd: string; label: 
             {pending ? "Sending…" : "Request appointment"}
           </button>
           {error && <p className="mt-2 rounded-md bg-red-50 p-2 text-sm text-red-700">{error}</p>}
-          <p className="mt-2 text-xs text-gray-500">We&apos;ll confirm by text. By submitting you agree to receive texts about your appointment; reply STOP to opt out.</p>
+          <p className="mt-2 text-xs text-gray-500">
+            We&apos;ll confirm by text. By submitting you agree to receive texts about your appointment; reply STOP to opt out. See our{" "}
+            <a href="/privacy" target="_blank" rel="noreferrer" className="underline">
+              Privacy Policy
+            </a>
+            .
+          </p>
         </div>
       </form>
     </div>
