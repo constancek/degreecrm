@@ -18,6 +18,8 @@ import {
 } from "@/lib/services/proposals";
 import { db } from "@/lib/db";
 import { formatCents } from "@/lib/money";
+import { listVisits, updateVisitStatus } from "@/lib/services/visits";
+import { addDaysYmd, easternMidnight, easternYmd } from "@/lib/services/dispatch";
 import type { StaffActor } from "@/lib/session";
 
 // The MCP tools call the same service layer as the web UI, so permissions and side effects
@@ -350,6 +352,57 @@ export function buildMcpServer(actor: StaffActor) {
       }),
     );
   }
+
+  // ---- Visits ---------------------------------------------------------------
+
+  const VTIME = new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", weekday: "short", hour: "numeric", minute: "2-digit" });
+
+  server.registerTool(
+    "list_my_visits",
+    {
+      title: "List my visits",
+      description: "Your scheduled visits (estimates and job days) for a day, default today (Eastern time).",
+      inputSchema: { date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().describe("YYYY-MM-DD; defaults to today"), days: z.number().int().min(1).max(7).default(1) },
+      annotations: { readOnlyHint: true },
+    },
+    run(actor, "list_my_visits", async ({ date, days }: { date?: string; days: number }) => {
+      const ymd = date ?? easternYmd(new Date());
+      const visits = await listVisits(actor, { from: easternMidnight(ymd), to: easternMidnight(addDaysYmd(ymd, days)), techId: actor.id });
+      return {
+        result: visits.map((v) => ({
+          visitId: v.id,
+          when: `${VTIME.format(v.start)}–${VTIME.format(v.end)}`,
+          kind: v.kind,
+          status: v.status,
+          customer: v.lead.customer.name,
+          phone: formatPhone(v.lead.customer.phone) || null,
+          address: formatAddress(v.lead.property) || null,
+          accessNotes: v.lead.property?.notes ?? null,
+          job: v.job?.title ?? v.lead.title,
+          notes: v.notes,
+          leadId: v.leadId,
+        })),
+      };
+    }),
+  );
+
+  server.registerTool(
+    "update_visit_status",
+    {
+      title: "Update visit status",
+      description:
+        "Mark a visit en_route (optionally texting the customer you're on the way), in_progress, or done. Completing the last job visit completes the job and sends the final invoice.",
+      inputSchema: {
+        visitId: z.string(),
+        status: z.enum(["en_route", "in_progress", "done"]),
+        notifyCustomer: z.boolean().default(true).describe("For en_route: text the customer"),
+      },
+    },
+    run(actor, "update_visit_status", async ({ visitId, status, notifyCustomer }: { visitId: string; status: "en_route" | "in_progress" | "done"; notifyCustomer: boolean }) => {
+      const v = await updateVisitStatus(actor, visitId, status, { notifyCustomer });
+      return { leadId: v.leadId, result: { visitId: v.id, status: v.status } };
+    }),
+  );
 
   // ---- Resources -------------------------------------------------------------
 

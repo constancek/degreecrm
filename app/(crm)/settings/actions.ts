@@ -38,6 +38,9 @@ export async function saveCompanyAction(_prev: SettingsState, fd: FormData): Pro
       depositThresholdCents: threshold,
       depositBelowPercent: Number(s(fd, "depositBelow")),
       depositAbovePercent: Number(s(fd, "depositAbove")),
+      ownerAlertPhone: s(fd, "ownerAlertPhone"),
+      acornLink: s(fd, "acornLink"),
+      googleReviewUrl: s(fd, "googleReviewUrl"),
     });
   } catch (err) {
     return fail(err);

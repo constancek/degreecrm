@@ -11,9 +11,8 @@ async function loop() {
     const started = Date.now();
     try {
       const result = await runTick();
-      if (result.followUp || result.lost || result.outbox.sent || result.outbox.failed) {
-        console.log(new Date().toISOString(), JSON.stringify(result));
-      }
+      const busy = Object.values(result).some((v) => (typeof v === "number" && v > 0) || typeof v === "string" || (typeof v === "object" && v && (v.sent || v.failed)));
+      if (busy) console.log(new Date().toISOString(), JSON.stringify(result));
     } catch (err) {
       console.error("[worker] tick failed", err);
     }

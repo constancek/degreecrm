@@ -25,6 +25,8 @@ export function isClientPath(pathname: string): boolean {
     pathname.startsWith("/p/") ||
     pathname.startsWith("/terms/") ||
     pathname.startsWith("/brand/") ||
+    // Test-only stand-ins (404 unless MOCK_INTEGRATIONS=1).
+    pathname.startsWith("/api/dev/") ||
     pathname === "/robots.txt"
   );
 }

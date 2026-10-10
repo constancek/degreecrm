@@ -125,6 +125,8 @@ The CRM exposes a remote MCP server so each worker can draft proposals and manag
 
 ## E-signature with Documenso
 
+> **Decision (2026-10-10):** use Documenso's hosted service (app.documenso.com, the existing API key) instead of self-hosting on Railway. Customers sign on Documenso's page and are redirected back (no iframe embed, which needs a paid embedding plan); completion is confirmed both on return and by webhook.
+
 Documenso runs as its own Railway service at `sign.cincydegreeofcomfort.com`; the app talks to it only through its REST API and a webhook.
 
 1. Deploy the official Documenso Railway template. Set `NEXT_PUBLIC_WEBAPP_URL` to the sign subdomain, point SMTP at Resend (or Postmark), keep the auto-generated self-signed certificate, and create one API token for the CRM (`DOCUMENSO_API_KEY`).

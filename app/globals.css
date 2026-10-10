@@ -8,6 +8,16 @@
   --font-mono: var(--font-geist-mono);
 }
 
+/* Tailwind v4 defaults borders to currentColor; use a light gray like v3. */
+@layer base {
+  *,
+  ::after,
+  ::before,
+  ::backdrop {
+    border-color: var(--color-gray-200, #e5e7eb);
+  }
+}
+
 body {
   background: #f5f6f8;
   color: #111827;

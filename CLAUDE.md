@@ -8,8 +8,7 @@ the user says so. Before each phase: post a short plan (files, models, routes, e
 
 ## Status
 
-- Phase 1 (Foundation) and Phase 2 (Proposals): done. See CHANGELOG.md.
-- Next: Phase 3 (Sign + pay). The client page's "Approve & sign" button is a disabled placeholder until then.
+- All six phases are built (see CHANGELOG.md). Now in "test with real accounts and fix" mode.
 
 ## Stack
 
@@ -44,7 +43,14 @@ prompts/                  Claude system prompt + one file per trade (read at run
 skills/                   Claude skills to upload to the org (proposal, my-day)
 worker/index.ts           `npm run worker`: same tick on a 60 s loop (local / non-Vercel hosts)
 lib/services/*            business rules. UI, MCP and intake all call these; never put rules in routes/components
-lib/integrations/<svc>.ts typed client + mock per external service: discord, google-maps, claude, quo, blob
+lib/integrations/<svc>.ts typed client + mock per external service: discord, google-maps (geocode, routes), claude,
+                          claude-text, quo, blob, documenso, quickbooks, google-calendar
+lib/services/signing.ts   Documenso start/complete; payments.ts deposits + QBO; jobs.ts completion/invoice/review;
+                          visits.ts scheduling + calendar sync; dispatch.ts board + slot finder; messages.ts +
+                          sequences.ts texting; financing.ts Acorn emails; quickbooks-auth.ts OAuth tokens
+lib/jobs/tick.ts          every-minute scheduler (Vercel Cron / npm run worker); each step fails independently
+app/(crm)/ops-actions.ts  server actions for visits, payments, invoices, texts, sequences, slot finder
+app/api/webhooks/*        documenso (X-Documenso-Secret), quo (openphone-signature HMAC), financing (?secret=)
 lib/notifications/*       message builders (Discord embeds)
 prisma/schema.prisma      models; prisma/seed.ts demo data
 tests/                    Vitest (unit + service tests against degreecrm_test)
@@ -74,7 +80,13 @@ e2e/                      Playwright happy paths (production build on :3100 agai
   sent proposal gets a revision. T&C are versioned rows (`TermsVersion`), never edited in place.
 - Sales tax: `taxForProperty` = county row, else statewide row; geocodes the property if the county is unknown.
 - Files go through `getBlobStore()` (private Vercel Blob, or `.blobdata/` locally). Never public URLs.
-- Tailwind v4: shared classes are `@utility` blocks in `app/globals.css` (`input`, `label`, `btn-primary`, `btn-secondary`, `card`).
+- `MOCK_INTEGRATIONS=1` swaps Documenso, QuickBooks and Google Calendar for in-process mocks (e2e uses it; mock
+  pages live at /dev/mock-sign and /api/dev/qbo-token and 404 otherwise). Never set it in production.
+- Stage moves after signing: signed → estimate_approved; deposit doesn't move the stage (creates the Job); a job visit
+  → job_scheduled; Start → job_in_progress; last visit done → job_completed → invoiced → payment_complete →
+  review_requested. Drips start/stop in `onLeadStageChanged` (sequences.ts), called from `changeStage`.
+- Times: store UTC, show/compute in America/New_York (`easternMidnight`, `easternYmd` in dispatch.ts).
+- Tailwind v4: borders default to gray-200 via a base rule in globals.css (v4's default is currentColor). Shared classes are `@utility` blocks in `app/globals.css` (`input`, `label`, `btn-primary`, `btn-secondary`, `card`).
 
 ## Commands
 

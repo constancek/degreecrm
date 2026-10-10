@@ -11,6 +11,9 @@ import { formatDateTime, timeAgo } from "@/lib/format";
 import { formatAddress } from "@/lib/notifications/discord-embeds";
 import { AssignForm, LeadDetailsForm, NoteForm, StageForm } from "./lead-forms";
 import { listLeadProposals } from "@/lib/services/proposals";
+import { db } from "@/lib/db";
+import { leadEnrollments } from "@/lib/services/sequences";
+import { EnrollmentList, ScheduleVisitForm, TextThread, VisitList } from "@/components/ops/ops-forms";
 import { formatCents } from "@/lib/money";
 
 export const metadata: Metadata = { title: "Lead" };
@@ -22,10 +25,15 @@ export default async function LeadPage({ params }: PageProps<"/leads/[id]">) {
     if (e instanceof NotFoundError) notFound();
     throw e;
   });
-  const [staff, proposals] = await Promise.all([
+  const [staff, proposals, visits, jobs, messages, enrollments] = await Promise.all([
     user.role === "owner" ? listActiveStaff() : Promise.resolve([]),
     listLeadProposals(user, lead.id),
+    db.visit.findMany({ where: { leadId: lead.id }, orderBy: { start: "desc" }, include: { tech: { select: { name: true } } } }),
+    db.job.findMany({ where: { leadId: lead.id }, orderBy: { createdAt: "desc" } }),
+    db.message.findMany({ where: { customerId: lead.customerId }, orderBy: { createdAt: "asc" }, take: 200, include: { sentBy: { select: { name: true } } } }),
+    leadEnrollments(lead.id),
   ]);
+  const canText = Boolean(lead.customer.phone) && !lead.customer.smsOptOut;
   const address = formatAddress(lead.property);
 
   return (
@@ -110,6 +118,84 @@ export default async function LeadPage({ params }: PageProps<"/leads/[id]">) {
               })}
             </ul>
           )}
+        </section>
+
+        {jobs.length > 0 && (
+          <section className="card p-4">
+            <h2 className="font-semibold">Job</h2>
+            <ul className="mt-2 text-sm">
+              {jobs.map((j) => (
+                <li key={j.id}>
+                  <Link href={`/jobs/${j.id}`} className="font-medium text-brand hover:underline">
+                    {j.title}
+                  </Link>{" "}
+                  <span className="capitalize text-gray-600">· {j.status.replace("_", " ")}</span>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+
+        <section className="card p-4">
+          <h2 className="font-semibold">Visits</h2>
+          <div className="mt-2">
+            <VisitList
+              canEdit={user.role === "owner"}
+              visits={visits.map((v) => ({
+                id: v.id,
+                kind: v.kind,
+                when: formatDateTime(v.start),
+                techName: v.tech.name,
+                status: v.status,
+                syncState: v.syncState,
+                syncError: v.syncError,
+              }))}
+            />
+          </div>
+          {user.role === "owner" && (
+            <details className="mt-3">
+              <summary className="cursor-pointer text-sm font-medium text-brand">Book an estimate visit</summary>
+              <div className="mt-3">
+                <ScheduleVisitForm
+                  leadId={lead.id}
+                  kind="estimate"
+                  techs={staff.map((s) => ({ id: s.id, name: s.name }))}
+                  defaultTechId={lead.assignedToId}
+                  defaultHours={1}
+                />
+              </div>
+            </details>
+          )}
+        </section>
+
+        <section className="card p-4">
+          <h2 className="mb-3 font-semibold">Texts</h2>
+          <TextThread
+            leadId={lead.id}
+            canText={canText}
+            reason={!lead.customer.phone ? "no phone number" : "customer opted out (replied STOP)"}
+            messages={messages.map((m) => ({
+              id: m.id,
+              direction: m.direction,
+              body: m.body,
+              when: formatDateTime(m.createdAt),
+              status: m.status,
+              by: m.sentBy?.name ?? (m.enrollmentId ? "automatic" : null),
+            }))}
+          />
+          <h3 className="mt-4 mb-1 text-sm font-semibold">Automatic texts</h3>
+          <EnrollmentList
+            leadId={lead.id}
+            rows={enrollments.map((e) => ({
+              id: e.id,
+              name: e.sequence.name,
+              status: e.status,
+              detail:
+                e.status === "active"
+                  ? `step ${e.stepIndex + 1} of ${e.sequence.steps.length}${e.nextSendAt ? `, next ${formatDateTime(e.nextSendAt)}` : ""}`
+                  : `${e.status}${e.stoppedReason ? `: ${e.stoppedReason}` : ""}`,
+            }))}
+          />
         </section>
 
         <LeadDetailsForm
@@ -208,6 +294,40 @@ function describeActivity(type: string, data: unknown): string {
       return "sent a text";
     case "sms_failed":
       return "tried to send a text";
+    case "sms_received":
+      return "texted us";
+    case "sms_opt_out":
+      return "opted out of texts";
+    case "sign_started":
+      return "started signing";
+    case "proposal_signed":
+      return "signed the proposal";
+    case "deposit_paid":
+      return "paid the deposit";
+    case "payment_failed":
+      return "had a payment declined";
+    case "financing_clicked":
+      return "looked at financing";
+    case "financing":
+      return "financing update";
+    case "visit_scheduled":
+      return "scheduled a visit";
+    case "visit_rescheduled":
+      return "rescheduled a visit";
+    case "visit_cancelled":
+      return "cancelled a visit";
+    case "visit_status":
+      return "updated a visit";
+    case "job_completed":
+      return "completed the job";
+    case "invoice_sent":
+      return "sent the final invoice";
+    case "job_paid":
+      return "recorded full payment";
+    case "quickbooks_estimate":
+      return "synced to QuickBooks";
+    case "quickbooks_error":
+      return "QuickBooks problem";
     default:
       return type.replace(/_/g, " ");
   }

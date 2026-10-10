@@ -1,5 +1,33 @@
 # Changelog
 
+## Phases 3–6: Sign + pay, scheduling, dispatch, texting (2026-10-10)
+
+- **Sign:** "Approve & sign" on the client page creates a Documenso document from the selected-option PDF (fixed
+  Acceptance page with signature/date/name fields), sends the customer to sign and back. Completion (webhook or
+  return) stores the sealed PDF, a local `Signature` audit row, moves the lead to Estimate approved, stops drips,
+  supersedes other versions, texts the owner and creates the QuickBooks customer + estimate.
+- **Pay:** deposit by card with Intuit browser tokenization (card data never reaches our server), idempotent charge,
+  booked in QuickBooks Online as an invoice + payment linked to the estimate. Owner can record check/cash/financing
+  deposits. Deposit creates the `Job`; customer gets a confirmation text. "Pay monthly" opens the Acorn link and
+  alerts the owner; Acorn status emails are read by Claude at `/api/webhooks/financing`.
+- **QuickBooks:** owner connects in Settings (OAuth, encrypted rotating tokens refreshed daily).
+- **Scheduling:** `Visit` (estimate / job) with per-tech Google Calendar sync both ways (push on change, poll every
+  5 min for moves made in Google; deletions flagged). Visits book the lead into Estimate scheduled / Job scheduled.
+  `/my-day` for techs with On my way (texts the customer) / Start / Complete. Last visit done → job completed →
+  final QuickBooks invoice for the balance, emailed and texted → paid when the balance hits zero (polled) →
+  receipt text → next morning review request + HVAC maintenance drip.
+- **Dispatch** (`/dispatch`): day grid by tech (15-min drag & drop, Google busy time in grey) and week view, list of
+  jobs/estimates to schedule, map of the day's visits, and a slot finder (free time + drive time via Routes API,
+  with a "just ask" box parsed by Claude).
+- **Texting:** every text logged as a `Message` thread on the lead; one-off texts; Quo inbound webhook (signature
+  verified) stops drips on reply, honors STOP/START, alerts Discord (urgent keywords also text the owner).
+  Editable sequences (`/settings/texts`): book an estimate, proposal follow-up (day 1/3/7/14/30), estimate and job
+  reminders, maintenance. Sent 9 am–8 pm ET Mon–Sat, STOP wording on the first automatic text, optional Claude
+  personalization, stop after 3 failed deliveries.
+- MCP: `list_my_visits`, `update_visit_status`.
+- Tests: services for signing, deposit, scheduling → review, calendar sync, drips, STOP, webhooks, slot finder,
+  financing; Playwright end-to-end for sign → pay → schedule → complete → invoice, dispatch slot booking and texting.
+
 ## Phase 2: Proposals (2026-10-10)
 
 - Price book (`/pricebook`): equipment, materials, labor and fees per trade (or shared), with cost for margins.

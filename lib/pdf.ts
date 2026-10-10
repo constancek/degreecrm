@@ -87,3 +87,21 @@ export async function getProposalPdf(proposalId: string, optionId: string, opts:
   }
   return pdf;
 }
+
+/** Number of pages in a PDF Chromium produced (uncompressed page tree). */
+export function pdfPageCount(pdf: Buffer): number {
+  const text = pdf.toString("latin1");
+  const counts = [...text.matchAll(/\/Type\s*\/Pages[\s\S]{0,200}?\/Count\s+(\d+)/g)].map((m) => Number(m[1]));
+  if (counts.length) return Math.max(...counts);
+  return (text.match(/\/Type\s*\/Page(?![s\w])/g) ?? []).length;
+}
+
+/**
+ * Where the signer fills in, on the last page (the fixed "Acceptance" layout in the print page).
+ * Percent of a US Letter page; must match the Acceptance section of app/print/proposal/[id]/page.tsx.
+ */
+export const SIGNATURE_FIELDS = {
+  signature: { pageX: 5.88, pageY: 18.18, pageWidth: 50, pageHeight: 7.27 },
+  date: { pageX: 61.76, pageY: 18.18, pageWidth: 29.4, pageHeight: 4.55 },
+  name: { pageX: 5.88, pageY: 29.09, pageWidth: 50, pageHeight: 3.64 },
+};

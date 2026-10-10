@@ -12,7 +12,7 @@ import {
   ProposalIntro,
   TierBadge,
 } from "@/components/proposal/proposal-parts";
-import { freshLinkAction, gateAction, selectOptionAction, termsCheckedAction } from "./actions";
+import { freshLinkAction, gateAction, selectOptionAction, startSigningAction, termsCheckedAction } from "./actions";
 
 export function GateForm({ token, kind }: { token: string; kind: "phone" | "email" }) {
   const [state, action, pending] = useActionState(gateAction.bind(null, token), undefined);
@@ -57,12 +57,37 @@ export function FreshLinkButton({ token }: { token: string }) {
   );
 }
 
-export function ProposalChooser({ view, token, termsHref }: { view: ProposalView; token: string; termsHref: string | null }) {
+export function ProposalChooser({
+  view,
+  token,
+  termsHref,
+  signer,
+  waitingForSignature,
+}: {
+  view: ProposalView;
+  token: string;
+  termsHref: string | null;
+  signer: { name: string; email: string };
+  waitingForSignature: boolean;
+}) {
   const [selected, setSelected] = useState<string | null>(view.selectedOptionId);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [agreed, setAgreed] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [, start] = useTransition();
+  const [name, setName] = useState(signer.name);
+  const [email, setEmail] = useState(signer.email);
+  const [signing, startSigning] = useTransition();
+
+  function sign() {
+    if (!chosen) return;
+    setError(null);
+    startSigning(async () => {
+      const res = await startSigningAction(token, { optionId: chosen.id, name, email, termsAccepted: agreed });
+      if (res.url) window.location.href = res.url;
+      else setError(res.error ?? "Something went wrong.");
+    });
+  }
   const chosen = view.options.find((o) => o.id === selected) ?? null;
 
   function choose(optionId: string) {
@@ -169,20 +194,46 @@ export function ProposalChooser({ view, token, termsHref }: { view: ProposalView
               .
             </span>
           </label>
+          {agreed && (
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              <div>
+                <label className="label" htmlFor="signer-name">
+                  Your full name
+                </label>
+                <input id="signer-name" className="input" value={name} onChange={(e) => setName(e.target.value)} autoComplete="name" />
+              </div>
+              <div>
+                <label className="label" htmlFor="signer-email">
+                  Email for your signed copy
+                </label>
+                <input
+                  id="signer-email"
+                  className="input"
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  autoComplete="email"
+                />
+              </div>
+            </div>
+          )}
           <div className="mt-4 flex flex-wrap items-center gap-3">
-            <button className="btn-primary px-6 py-3 text-base" disabled title="Online signing is coming soon">
-              Approve &amp; sign
+            <button className="btn-primary px-6 py-3 text-base" disabled={!agreed || signing} onClick={sign}>
+              {signing ? "Preparing your document…" : "Approve & sign"}
             </button>
             <a href={`/p/${token}/pdf`} className="btn-secondary">
               Download PDF
             </a>
           </div>
           <p className="mt-2 text-xs text-gray-500">
-            {agreed
-              ? `Online signing is almost ready. To approve today, call ${view.company.phone || "us"}.`
-              : "Check the box above to continue."}
+            {agreed ? "You'll sign securely with Documenso and come right back here for the deposit." : "Check the box above to continue."}
           </p>
         </section>
+      )}
+      {waitingForSignature && (
+        <p className="mt-4 rounded-md bg-amber-50 p-3 text-sm text-amber-800">
+          We&apos;re still waiting for the signature to finish. If you completed signing, refresh this page in a minute.
+        </p>
       )}
 
       <AssumptionsAndExclusions view={view} />

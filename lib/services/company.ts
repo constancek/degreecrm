@@ -24,6 +24,12 @@ export type CompanyProfile = {
   depositThresholdCents: number;
   depositBelowPercent: number;
   depositAbovePercent: number;
+  /** Owner's mobile (E.164) for "proposal signed" / urgent texts. */
+  ownerAlertPhone: string;
+  /** Acorn Finance contractor link for "Pay monthly". */
+  acornLink: string;
+  /** Google review link sent after payment. */
+  googleReviewUrl: string;
 };
 
 const DEFAULTS: CompanyProfile = {
@@ -41,6 +47,9 @@ const DEFAULTS: CompanyProfile = {
   depositThresholdCents: 500_000,
   depositBelowPercent: 50,
   depositAbovePercent: 30,
+  ownerAlertPhone: "",
+  acornLink: "",
+  googleReviewUrl: "",
 };
 
 export async function getCompany(): Promise<CompanyProfile> {
@@ -66,6 +75,9 @@ const detailsInput = z.object({
   depositThresholdCents: z.number().int().min(0),
   depositBelowPercent: z.number().int().min(0).max(100),
   depositAbovePercent: z.number().int().min(0).max(100),
+  ownerAlertPhone: z.string().trim().max(40).default(""),
+  acornLink: z.string().trim().max(500).default(""),
+  googleReviewUrl: z.string().trim().max(500).default(""),
 });
 
 export async function saveCompanyDetails(actor: Actor, raw: unknown) {
@@ -73,6 +85,10 @@ export async function saveCompanyDetails(actor: Actor, raw: unknown) {
   const input = detailsInput.parse(raw);
   if (input.phone && !normalizePhone(input.phone)) throw new ValidationError("Phone number doesn't look like a US number");
   if (input.email && !normalizeEmail(input.email)) throw new ValidationError("Support email doesn't look right");
+  if (input.ownerAlertPhone && !normalizePhone(input.ownerAlertPhone)) throw new ValidationError("Alert phone doesn't look like a US number");
+  for (const [label, url] of [["Acorn link", input.acornLink], ["Review link", input.googleReviewUrl]] as const) {
+    if (url && !/^https:\/\/\S+$/.test(url)) throw new ValidationError(`${label} must start with https://`);
+  }
   const current = await getCompany();
   await write({
     ...current,
@@ -80,6 +96,7 @@ export async function saveCompanyDetails(actor: Actor, raw: unknown) {
     state: input.state.toUpperCase(),
     phone: normalizePhone(input.phone) ?? "",
     email: normalizeEmail(input.email) ?? "",
+    ownerAlertPhone: normalizePhone(input.ownerAlertPhone) ?? "",
   });
 }
 

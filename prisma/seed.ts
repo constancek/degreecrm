@@ -12,6 +12,12 @@ async function main() {
   if (process.env.VERCEL_ENV === "production") throw new Error("Refusing to seed production");
 
   await db.$transaction([
+    db.message.deleteMany(),
+    db.enrollment.deleteMany(),
+    db.payment.deleteMany(),
+    db.signature.deleteMany(),
+    db.visit.deleteMany(),
+    db.job.deleteMany(),
     db.lineItem.deleteMany(),
     db.proposalOption.deleteMany(),
     db.proposal.deleteMany(),

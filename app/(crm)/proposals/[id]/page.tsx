@@ -11,6 +11,10 @@ import { formatRate } from "@/lib/money";
 import { formatPhone } from "@/lib/phone";
 import { ProposalEditor } from "./proposal-editor";
 import { CopyLink, ReviseButton, SendPanel } from "./send-panel";
+import { db } from "@/lib/db";
+import { depositPercentFor } from "@/lib/services/company";
+import { formatCents } from "@/lib/money";
+import { RecordDepositForm } from "@/components/ops/ops-forms";
 
 export const metadata: Metadata = { title: "Proposal" };
 
@@ -35,6 +39,11 @@ export default async function ProposalPage({ params }: PageProps<"/proposals/[id
     p.token ? proposalTextStatus(p.id) : null,
   ]);
   const editable = p.status === "draft";
+  const [signature, job] = p.status === "signed"
+    ? await Promise.all([db.signature.findUnique({ where: { proposalId: p.id } }), db.job.findUnique({ where: { proposalId: p.id } })])
+    : [null, null];
+  const signedOption = p.options.find((o) => o.id === (p.signedOptionId ?? p.selectedOptionId));
+  const depositCents = signedOption ? Math.round((signedOption.totalCents * depositPercentFor(signedOption.totalCents, company, p.depositPercent)) / 100) : 0;
   const customer = p.lead.customer;
 
   return (
@@ -96,6 +105,34 @@ export default async function ProposalPage({ params }: PageProps<"/proposals/[id
       </div>
 
       <aside className="space-y-4">
+        {p.status === "signed" && signedOption && (
+          <section className="card space-y-1 border-green-600 p-4 text-sm">
+            <h2 className="font-semibold text-green-700">Signed ✓</h2>
+            <p>
+              <strong>{signedOption.title}</strong> · {formatCents(signedOption.totalCents, { cents: true })}
+            </p>
+            {signature && (
+              <p className="text-gray-600">
+                {signature.signerName} ({signature.signerEmail}) · {formatDateTime(signature.signedAt)} · T&amp;C v{signature.termsVersion}
+                {signature.ip ? ` · IP ${signature.ip}` : ""}
+              </p>
+            )}
+            <p className="pt-1">
+              Deposit {formatCents(depositCents, { cents: true })}:{" "}
+              {p.depositPaidAt ? <span className="font-medium text-green-700">received {formatDateTime(p.depositPaidAt)}</span> : <span className="text-amber-800">not paid yet</span>}
+            </p>
+            {job && (
+              <Link href={`/jobs/${job.id}`} className="font-medium text-brand underline">
+                Open the job →
+              </Link>
+            )}
+            {!p.depositPaidAt && user.role === "owner" && (
+              <div className="border-t pt-3">
+                <RecordDepositForm proposalId={p.id} defaultDollars={(depositCents / 100).toFixed(2)} />
+              </div>
+            )}
+          </section>
+        )}
         <section className="card p-4 text-sm">
           <h2 className="font-semibold">Preview</h2>
           <p className="mt-1 text-gray-600">See it the way the customer will, or download a PDF of one option.</p>

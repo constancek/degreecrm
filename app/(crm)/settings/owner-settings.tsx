@@ -29,7 +29,15 @@ function Field({ label, name, defaultValue, ...rest }: { label: string; name: st
   );
 }
 
-export function CompanySettings({ company, phoneDisplay }: { company: CompanyProfile; phoneDisplay: string }) {
+export function CompanySettings({
+  company,
+  phoneDisplay,
+  alertPhoneDisplay,
+}: {
+  company: CompanyProfile;
+  phoneDisplay: string;
+  alertPhoneDisplay: string;
+}) {
   const [state, action, pending] = useActionState(saveCompanyAction, undefined);
   const [logoState, logoAction, logoPending] = useActionState(uploadLogoAction, undefined);
 
@@ -90,6 +98,16 @@ export function CompanySettings({ company, phoneDisplay }: { company: CompanyPro
         </div>
         <div className="sm:col-span-3">
           <Field label="Website" name="website" defaultValue={company.website} />
+        </div>
+
+        <div className="sm:col-span-3">
+          <Field label="Your mobile for alerts (signed proposals, urgent texts)" name="ownerAlertPhone" defaultValue={alertPhoneDisplay} type="tel" />
+        </div>
+        <div className="sm:col-span-3">
+          <Field label="Google review link" name="googleReviewUrl" defaultValue={company.googleReviewUrl} placeholder="https://g.page/r/…" />
+        </div>
+        <div className="sm:col-span-6">
+          <Field label="Acorn Finance contractor link (shows “Pay monthly”)" name="acornLink" defaultValue={company.acornLink} placeholder="https://…" />
         </div>
 
         <fieldset className="rounded-md border border-gray-200 p-3 sm:col-span-6">

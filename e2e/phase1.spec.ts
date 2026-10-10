@@ -158,9 +158,11 @@ test("Claude connector: OAuth sign-in, then MCP tools act as that user", async (
     "create_proposal_draft",
     "get_lead",
     "get_price_book",
+    "list_my_visits",
     "log_note",
     "search_leads",
     "update_proposal_option",
+    "update_visit_status",
   ]);
 
   const search = await (

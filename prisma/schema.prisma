@@ -52,25 +52,32 @@ enum LeadStage {
 }
 
 model User {
-  id                 String    @id @default(cuid())
-  name               String
-  email              String    @unique
-  role               Role      @default(tech)
-  phone              String?
-  image              String?
-  active             Boolean   @default(true)
-  /// Encrypted with DATA_ENCRYPTION_KEY. Set when a tech connects Google Calendar (Phase 4).
-  googleRefreshToken String?
-  lastLoginAt        DateTime?
-  createdAt          DateTime  @default(now())
-  updatedAt          DateTime  @updatedAt
+  id                        String    @id @default(cuid())
+  name                      String
+  email                     String    @unique
+  role                      Role      @default(tech)
+  phone                     String?
+  image                     String?
+  active                    Boolean   @default(true)
+  /// Encrypted with DATA_ENCRYPTION_KEY. Set when a tech connects Google Calendar.
+  googleRefreshToken        String?
+  googleCalendarEmail       String?
+  googleCalendarConnectedAt DateTime?
+  /// Last time the inbound calendar poll ran for this user.
+  googleCalendarPolledAt    DateTime?
+  lastLoginAt               DateTime?
+  createdAt                 DateTime  @default(now())
+  updatedAt                 DateTime  @updatedAt
 
-  assignedLeads Lead[]       @relation("LeadAssignee")
+  assignedLeads Lead[]         @relation("LeadAssignee")
   activities    Activity[]
   oauthCodes    OAuthCode[]
   oauthTokens   OAuthToken[]
   proposals     Proposal[]
   termsVersions TermsVersion[]
+  jobs          Job[]          @relation("JobAssignee")
+  visits        Visit[]        @relation("VisitTech")
+  messagesSent  Message[]
 }
 
 model Customer {
@@ -89,6 +96,7 @@ model Customer {
   properties Property[]
   leads      Lead[]
   activities Activity[]
+  messages   Message[]
 
   @@index([phone])
   @@index([email])
@@ -113,6 +121,7 @@ model Property {
 
   customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
   leads    Lead[]
+  jobs     Job[]
 
   @@index([customerId])
 }
@@ -134,12 +143,16 @@ model Lead {
   createdAt      DateTime   @default(now())
   updatedAt      DateTime   @updatedAt
 
-  customer   Customer   @relation(fields: [customerId], references: [id], onDelete: Restrict)
-  property   Property?  @relation(fields: [propertyId], references: [id], onDelete: SetNull)
-  assignedTo User?      @relation("LeadAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
-  activities Activity[]
-  proposals  Proposal[]
-  photos     LeadPhoto[]
+  customer    Customer     @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  property    Property?    @relation(fields: [propertyId], references: [id], onDelete: SetNull)
+  assignedTo  User?        @relation("LeadAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
+  activities  Activity[]
+  proposals   Proposal[]
+  photos      LeadPhoto[]
+  jobs        Job[]
+  visits      Visit[]
+  enrollments Enrollment[]
+  messages    Message[]
 
   @@index([stage])
   @@index([assignedToId])
@@ -333,45 +346,56 @@ model LeadPhoto {
 
 /// One row per version; a revision creates a new row (SPEC.md "Data model").
 model Proposal {
-  id                  String         @id @default(cuid())
-  leadId              String
-  version             Int
-  status              ProposalStatus @default(draft)
+  id                   String         @id @default(cuid())
+  leadId               String
+  version              Int
+  status               ProposalStatus @default(draft)
   /// Random 32-char link token; set when sent.
-  token               String?        @unique
-  summary             String         @default("")
-  assumptions         String[]
-  exclusions          String[]
-  recommendedTier     Tier?
-  selectedOptionId    String?
+  token                String?        @unique
+  summary              String         @default("")
+  assumptions          String[]
+  exclusions           String[]
+  recommendedTier      Tier?
+  selectedOptionId     String?
   /// Sales tax snapshot (basis points) and where it came from, e.g. "Hamilton County, OH".
-  taxRateBps          Int            @default(0)
-  taxLabel            String         @default("")
+  taxRateBps           Int            @default(0)
+  taxLabel             String         @default("")
   /// Null = company rule (e.g. 50% under $5k, 30% above), decided per option total.
-  depositPercent      Int?
-  termsVersionId      String?
+  depositPercent       Int?
+  termsVersionId       String?
   /// What the drafter was given (notes / transcript), for reference.
-  inputNotes          String?
-  targetMarginPercent Int?
-  aiModel             String?
-  sentAt              DateTime?
-  expiresAt           DateTime?
-  firstViewedAt       DateTime?
-  lastViewedAt        DateTime?
-  viewCount           Int            @default(0)
-  gateFailures        Int            @default(0)
-  lockedAt            DateTime?
+  inputNotes           String?
+  targetMarginPercent  Int?
+  aiModel              String?
+  sentAt               DateTime?
+  expiresAt            DateTime?
+  firstViewedAt        DateTime?
+  lastViewedAt         DateTime?
+  viewCount            Int            @default(0)
+  gateFailures         Int            @default(0)
+  lockedAt             DateTime?
   /// Cached PDF of the selected option (private Blob pathname) and the state it was rendered from.
-  pdfPath             String?
-  pdfKey              String?
-  createdById         String?
-  createdAt           DateTime       @default(now())
-  updatedAt           DateTime       @updatedAt
+  pdfPath              String?
+  pdfKey               String?
+  /// E-signature (Documenso)
+  documensoDocumentId  Int?
+  signingUrl           String?
+  signedAt             DateTime?
+  signedOptionId       String?
+  /// When the deposit was recorded (card, check, financing…).
+  depositPaidAt        DateTime?
+  quickbooksEstimateId String?
+  createdById          String?
+  createdAt            DateTime       @default(now())
+  updatedAt            DateTime       @updatedAt
 
   lead      Lead             @relation(fields: [leadId], references: [id], onDelete: Cascade)
   createdBy User?            @relation(fields: [createdById], references: [id], onDelete: SetNull)
   terms     TermsVersion?    @relation(fields: [termsVersionId], references: [id], onDelete: Restrict)
   options   ProposalOption[]
+  signature Signature?
+  payments  Payment[]
+  job       Job?
 
   @@unique([leadId, version])
 }
@@ -419,4 +443,244 @@ model LineItem {
   priceBookItem PriceBookItem? @relation(fields: [priceBookItemId], references: [id], onDelete: SetNull)
 
   @@index([optionId])
+}
+
+// ---- Phase 3: signing and payments ------------------------------------------
+
+/// Mirrors Documenso's audit trail locally so the evidence survives a provider change.
+model Signature {
+  id              String   @id @default(cuid())
+  proposalId      String   @unique
+  optionId        String
+  signerName      String
+  signerEmail     String
+  ip              String?
+  userAgent       String?
+  signedAt        DateTime
+  termsVersion    Int
+  termsAcceptedAt DateTime
+  /// Sealed PDF (with Documenso's signing certificate) in private Blob.
+  signedPdfPath   String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  proposal Proposal @relation(fields: [proposalId], references: [id], onDelete: Cascade)
+}
+
+enum PaymentKind {
+  deposit
+  progress
+  final
+}
+
+enum PaymentMethod {
+  card
+  ach
+  check
+  cash
+  financing
+  quickbooks_invoice
+  other
+}
+
+enum PaymentStatus {
+  succeeded
+  failed
+  pending
+}
+
+model Payment {
+  id                  String        @id @default(cuid())
+  proposalId          String?
+  jobId               String?
+  kind                PaymentKind
+  method              PaymentMethod
+  amountCents         Int
+  status              PaymentStatus
+  quickbooksChargeId  String?       @unique
+  quickbooksPaymentId String?
+  cardLast4           String?
+  note                String?
+  failureReason       String?
+  createdById         String?
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+
+  proposal Proposal? @relation(fields: [proposalId], references: [id], onDelete: SetNull)
+  job      Job?      @relation(fields: [jobId], references: [id], onDelete: SetNull)
+}
+
+// ---- Phase 4: jobs, visits, calendar ----------------------------------------
+
+enum JobStatus {
+  unscheduled
+  scheduled
+  in_progress
+  completed
+  invoiced
+  paid
+  cancelled
+}
+
+/// Created when the deposit is recorded.
+model Job {
+  id                   String    @id @default(cuid())
+  leadId               String
+  proposalId           String    @unique
+  propertyId           String?
+  title                String
+  status               JobStatus @default(unscheduled)
+  assignedToId         String?
+  totalCents           Int
+  depositCents         Int
+  /// Estimated hours on site, for the dispatch board.
+  durationHours        Float     @default(4)
+  quickbooksEstimateId String?
+  quickbooksInvoiceId  String?
+  invoiceSentAt        DateTime?
+  invoiceLink          String?
+  completedAt          DateTime?
+  paidAt               DateTime?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  lead       Lead      @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  proposal   Proposal  @relation(fields: [proposalId], references: [id], onDelete: Restrict)
+  property   Property? @relation(fields: [propertyId], references: [id], onDelete: SetNull)
+  assignedTo User?     @relation("JobAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
+  visits     Visit[]
+  payments   Payment[]
+
+  @@index([status])
+  @@index([leadId])
+}
+
+enum VisitKind {
+  estimate
+  job
+}
+
+enum VisitStatus {
+  scheduled
+  en_route
+  in_progress
+  done
+  rescheduled
+  cancelled
+}
+
+/// One trip to the property. Estimates and job days are visits; each syncs to the tech's Google Calendar.
+model Visit {
+  id                 String      @id @default(cuid())
+  leadId             String
+  jobId              String?
+  kind               VisitKind
+  techId             String
+  start              DateTime
+  end                DateTime
+  status             VisitStatus @default(scheduled)
+  notes              String?
+  googleEventId      String?
+  /// The tech whose calendar holds googleEventId (moves when the visit is reassigned).
+  googleEventOwnerId String?
+  /// pending | synced | error | skipped
+  syncState          String      @default("pending")
+  syncError          String?
+  enRouteAt          DateTime?
+  startedAt          DateTime?
+  completedAt        DateTime?
+  createdAt          DateTime    @default(now())
+  updatedAt          DateTime    @updatedAt
+
+  lead        Lead         @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  job         Job?         @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  tech        User         @relation("VisitTech", fields: [techId], references: [id], onDelete: Restrict)
+  enrollments Enrollment[]
+
+  @@index([techId, start])
+  @@index([start])
+  @@index([syncState])
+}
+
+// ---- Phase 6: texting -------------------------------------------------------
+
+/// A drip / reminder sequence. `trigger` is a lead stage, or "estimate_visit" / "job_visit" for appointment reminders.
+model Sequence {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  name      String
+  trigger   String
+  /// Stop when the lead moves past this stage (null = only the generic stop rules).
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  steps       SequenceStep[]
+  enrollments Enrollment[]
+}
+
+model SequenceStep {
+  id          String   @id @default(cuid())
+  sequenceId  String
+  sortOrder   Int
+  /// "enrolled": hours after enrolling. "visit_start" / "visit_end": hours relative to the visit (negative = before).
+  anchor      String   @default("enrolled")
+  offsetHours Float    @default(0)
+  template    String
+  /// Let Claude lightly personalize the wording from the lead notes.
+  personalize Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  sequence Sequence @relation(fields: [sequenceId], references: [id], onDelete: Cascade)
+
+  @@index([sequenceId, sortOrder])
+}
+
+model Enrollment {
+  id            String    @id @default(cuid())
+  sequenceId    String
+  leadId        String
+  visitId       String?
+  stepIndex     Int       @default(0)
+  nextSendAt    DateTime?
+  /// active | completed | stopped
+  status        String    @default("active")
+  stoppedReason String?
+  failures      Int       @default(0)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  sequence Sequence  @relation(fields: [sequenceId], references: [id], onDelete: Cascade)
+  lead     Lead      @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  visit    Visit?    @relation(fields: [visitId], references: [id], onDelete: Cascade)
+  messages Message[]
+
+  @@index([status, nextSendAt])
+  @@index([leadId])
+}
+
+/// Every text in or out, one thread per customer.
+model Message {
+  id           String   @id @default(cuid())
+  customerId   String
+  leadId       String?
+  /// in | out
+  direction    String
+  body         String
+  /// queued | sent | delivered | failed | received
+  status       String
+  quoMessageId String?  @unique
+  enrollmentId String?
+  sentById     String?
+  error        String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  customer   Customer    @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  lead       Lead?       @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  enrollment Enrollment? @relation(fields: [enrollmentId], references: [id], onDelete: SetNull)
+  sentBy     User?       @relation(fields: [sentById], references: [id], onDelete: SetNull)
+
+  @@index([customerId, createdAt])
 }

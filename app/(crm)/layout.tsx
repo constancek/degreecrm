@@ -18,14 +18,25 @@ export default async function CrmLayout({ children }: LayoutProps<"/">) {
             <span className="sm:hidden">DoC</span>
             <span className="hidden sm:inline">Degree of Comfort</span>
           </Link>
-          <nav className="flex gap-3 text-sm whitespace-nowrap text-white/80 sm:gap-4">
+          <nav className="flex gap-3 overflow-x-auto text-sm whitespace-nowrap text-white/80 sm:gap-4">
             <Link href="/pipeline" className="hover:text-white">
               Pipeline
             </Link>
-            <Link href="/leads/new" className="hover:text-white">
+            {user.role === "owner" && (
+              <Link href="/dispatch" className="hover:text-white">
+                Dispatch
+              </Link>
+            )}
+            <Link href="/jobs" className="hover:text-white">
+              Jobs
+            </Link>
+            <Link href="/my-day" className="hover:text-white">
+              My day
+            </Link>
+            <Link href="/leads/new" className="hidden hover:text-white md:inline">
               New lead
             </Link>
-            <Link href="/pricebook" className="hover:text-white">
+            <Link href="/pricebook" className="hidden hover:text-white md:inline">
               Price book
             </Link>
             <Link href="/settings" className="hover:text-white">

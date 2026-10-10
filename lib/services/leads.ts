@@ -232,7 +232,7 @@ export async function changeStage(
   const stage = stageInput.parse(rawStage);
   const result = await db.$transaction(async (tx) => {
     const lead = await loadScoped(tx, actor, leadId);
-    if (lead.stage === stage) return lead;
+    if (lead.stage === stage) return { updated: lead, changed: false };
 
     const lostReason = stage === "lost" ? opts.lostReason?.trim() || "No reason given" : null;
     const updated = await tx.lead.update({
@@ -249,10 +249,15 @@ export async function changeStage(
     if ((await getDiscordStages(tx)).has(stage)) {
       await enqueueDiscord(tx, leadStageEmbed(updated, { by: actorName(actor) }));
     }
-    return updated;
+    return { updated, changed: lead.stage !== stage };
   });
   await flushOutboxSoon();
-  return result;
+  if (result.changed) {
+    // Lazy import: sequences → proposals → leads would otherwise be circular.
+    const { onLeadStageChanged } = await import("./sequences");
+    await onLeadStageChanged(leadId, stage).catch((e) => console.error("[sequences]", e));
+  }
+  return result.updated;
 }
 
 export async function assignLead(actor: Actor, leadId: string, userId: string | null) {

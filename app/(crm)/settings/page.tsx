@@ -12,11 +12,25 @@ import { getCompany } from "@/lib/services/company";
 import { PLACEHOLDER_KEY_TERMS, PLACEHOLDER_TERMS, currentTerms } from "@/lib/services/terms";
 import { listTaxRates } from "@/lib/services/tax";
 import { CompanySettings, TaxSettings, TermsSettings } from "./owner-settings";
+import { CalendarPanel, IntegrationsPanel } from "./integrations";
+import { connectionStatus } from "@/lib/services/quickbooks-auth";
+import Link from "next/link";
 
 export const metadata: Metadata = { title: "Settings" };
 
-export default async function SettingsPage() {
+const NOTICES: Record<string, string> = {
+  connected: "Connected.",
+  cancelled: "Connection cancelled.",
+  invalid: "That connection link expired. Try again.",
+  failed: "The connection failed. Try again, and check the app credentials.",
+  forbidden: "Only the owner can connect QuickBooks.",
+};
+
+export default async function SettingsPage({ searchParams }: PageProps<"/settings">) {
   const user = await requireUser();
+  const sp = await searchParams;
+  const me = await db.user.findUniqueOrThrow({ where: { id: user.id } });
+  const qbo = await connectionStatus();
   const isOwner = user.role === "owner";
   const [staff, discordStages, connections, company, terms, taxRates] = await Promise.all([
     isOwner ? listActiveStaff() : Promise.resolve([]),
@@ -55,9 +69,50 @@ export default async function SettingsPage() {
     <div className="mx-auto w-full max-w-3xl space-y-4 p-4">
       <h1 className="text-lg font-semibold">Settings</h1>
 
+      <CalendarPanel
+        connected={Boolean(me.googleRefreshToken)}
+        email={me.googleCalendarEmail}
+        connectedAt={me.googleCalendarConnectedAt}
+        notice={typeof sp.calendar === "string" ? (NOTICES[sp.calendar] ?? null) : null}
+      />
+
+      {isOwner && (
+        <IntegrationsPanel
+          notice={typeof sp.quickbooks === "string" ? `QuickBooks: ${NOTICES[sp.quickbooks] ?? sp.quickbooks}` : null}
+          quickbooks={{
+            connected: qbo.connected,
+            env: qbo.env,
+            connectedAt: qbo.connected ? qbo.connectedAt : null,
+            refreshExpiresAt: qbo.connected ? qbo.refreshExpiresAt : null,
+          }}
+          statuses={[
+            { label: "Claude", ok: Boolean(process.env.ANTHROPIC_API_KEY), detail: "proposal drafting" },
+            { label: "Documenso", ok: Boolean(process.env.DOCUMENSO_API_KEY), detail: process.env.DOCUMENSO_BASE_URL || "app.documenso.com" },
+            { label: "Documenso webhook secret", ok: Boolean(process.env.DOCUMENSO_WEBHOOK_SECRET), detail: "" },
+            { label: "Quo texting", ok: Boolean(process.env.QUO_API_KEY && process.env.QUO_INBOX_ID), detail: "" },
+            { label: "Quo webhook secret", ok: Boolean(process.env.QUO_WEBHOOK_SECRET), detail: "for incoming texts" },
+            { label: "Discord", ok: Boolean(process.env.DISCORD_SERVICE_WEBHOOK_URL), detail: "#degree-service-call" },
+            { label: "Google Maps", ok: Boolean(process.env.GOOGLE_MAPS_API_KEY && process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY), detail: "geocoding, address search, dispatch map" },
+            { label: "File storage", ok: Boolean(process.env.BLOB_READ_WRITE_TOKEN), detail: "Vercel Blob" },
+          ]}
+        />
+      )}
+
+      {isOwner && (
+        <section className="card flex items-center justify-between p-4">
+          <div>
+            <h2 className="font-semibold">Automatic texts</h2>
+            <p className="text-sm text-gray-600">Follow-ups, reminders and maintenance texts.</p>
+          </div>
+          <Link href="/settings/texts" className="btn-secondary">
+            Edit texts
+          </Link>
+        </section>
+      )}
+
       {isOwner && (
         <>
-          <CompanySettings company={company} phoneDisplay={formatPhone(company.phone)} />
+          <CompanySettings company={company} phoneDisplay={formatPhone(company.phone)} alertPhoneDisplay={formatPhone(company.ownerAlertPhone)} />
           <TermsSettings
             version={terms?.version ?? null}
             body={terms?.body ?? PLACEHOLDER_TERMS}
@@ -128,6 +183,7 @@ export default async function SettingsPage() {
                 </span>
                 <span className="text-gray-500">
                   {s.role}
+                  {s.googleRefreshToken ? " · calendar connected" : " · calendar not connected"}
                   {s.lastLoginAt ? ` · last seen ${formatDateTime(s.lastLoginAt)}` : " · never signed in"}
                 </span>
               </li>

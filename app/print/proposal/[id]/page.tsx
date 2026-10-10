@@ -43,7 +43,7 @@ export default async function PrintProposal({ params, searchParams }: PageProps<
   const others = view.options.filter((o) => o.id !== optionId);
 
   return (
-    <main className="bg-white px-2 text-gray-900 [print-color-adjust:exact]">
+    <main className="bg-white text-gray-900 [print-color-adjust:exact]">
       <CompanyHeader view={view} />
       <ProposalIntro view={view} />
 
@@ -83,25 +83,38 @@ export default async function PrintProposal({ params, searchParams }: PageProps<
 
       <AssumptionsAndExclusions view={view} />
 
-      <section className="mt-10 break-inside-avoid">
-        <h3 className="font-semibold">Acceptance</h3>
-        <p className="mt-1 text-sm">
-          By signing, the customer accepts the selected option and the Terms &amp; Conditions
-          {view.termsVersion ? ` (version ${view.termsVersion})` : ""} attached below.
-        </p>
-        <div className="mt-10 grid grid-cols-2 gap-10 text-sm">
-          <div className="border-t border-gray-900 pt-1">Customer signature</div>
-          <div className="border-t border-gray-900 pt-1">Date</div>
-          <div className="border-t border-gray-900 pt-1">Printed name</div>
-          <div className="border-t border-gray-900 pt-1">For {view.company.name}</div>
-        </div>
-      </section>
-
       {terms && (
         <section className="mt-10 break-before-page">
           <Markdown>{terms.body}</Markdown>
         </section>
       )}
+
+      {/* Always the last page, with a fixed layout: Documenso's signature fields are placed by
+          position (SIGNATURE_FIELDS in lib/pdf.ts). Letter page, 0.5in margins. */}
+      <section className="break-before-page" style={{ height: "9in" }}>
+        <div style={{ height: "1.5in", overflow: "hidden" }}>
+          <h3 className="text-lg font-semibold">Acceptance</h3>
+          <p className="mt-1 text-sm">
+            I accept <strong>{option.title}</strong> for {formatCents(option.totalCents, { cents: true })} (deposit{" "}
+            {formatCents(option.depositCents, { cents: true })}) and the Terms &amp; Conditions
+            {view.termsVersion ? ` (version ${view.termsVersion})` : ""} in this document.
+          </p>
+          <p className="mt-1 text-xs text-gray-500">
+            {view.customerName} · {view.address} · Proposal v{view.version}
+          </p>
+        </div>
+        <div className="flex" style={{ gap: "0.5in" }}>
+          <div style={{ width: "4.25in", height: "0.8in" }} className="flex flex-col justify-end border-b border-gray-900">
+            <span className="-mb-5 text-xs text-gray-500">Customer signature</span>
+          </div>
+          <div style={{ width: "2.5in", height: "0.5in" }} className="flex flex-col justify-end border-b border-gray-900">
+            <span className="-mb-5 text-xs text-gray-500">Date</span>
+          </div>
+        </div>
+        <div style={{ marginTop: "0.4in", width: "4.25in", height: "0.4in" }} className="flex flex-col justify-end border-b border-gray-900">
+          <span className="-mb-5 text-xs text-gray-500">Printed name</span>
+        </div>
+      </section>
     </main>
   );
 }

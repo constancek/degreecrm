@@ -71,3 +71,55 @@ export async function freshLinkAction(token: string): Promise<{ done: boolean }>
   await requestFreshLink(p);
   return { done: true };
 }
+
+// ---- Phase 3: signing + deposit ------------------------------------------------
+
+async function authorizedAny(token: string) {
+  // Signed proposals stay reachable (for the deposit step) but still require the gate.
+  const p = await loadByToken(token);
+  if (!p || p.lockedAt) return null;
+  const cookie = (await cookies()).get(gateCookieName(p.id))?.value;
+  return gateCookieValid(p.id, token, cookie) ? p : null;
+}
+
+export async function startSigningAction(
+  token: string,
+  input: { optionId: string; name: string; email: string; termsAccepted: boolean },
+): Promise<{ url?: string; error?: string }> {
+  const p = await authorized(token);
+  if (!p) return { error: "This proposal is no longer available. Please refresh the page." };
+  const { startSigning } = await import("@/lib/services/signing");
+  const { ValidationError } = await import("@/lib/services/actor");
+  const { ZodError } = await import("zod");
+  try {
+    return { url: await startSigning(p, { ...input, termsAccepted: input.termsAccepted as true }, await requestMeta()) };
+  } catch (err) {
+    if (err instanceof ZodError) return { error: err.issues[0]?.message ?? "Please check the form" };
+    if (err instanceof ValidationError) return { error: err.message };
+    console.error("[sign]", err);
+    return { error: "We couldn't start signing just now. Please try again in a minute or call us." };
+  }
+}
+
+export async function payDepositAction(token: string, cardToken: string): Promise<{ ok?: boolean; error?: string }> {
+  const p = await authorizedAny(token);
+  if (!p) return { error: "Please refresh the page and try again." };
+  const { chargeDeposit } = await import("@/lib/services/payments");
+  const { ValidationError } = await import("@/lib/services/actor");
+  try {
+    await chargeDeposit(p.id, cardToken, await requestMeta());
+  } catch (err) {
+    if (err instanceof ValidationError) return { error: err.message };
+    console.error("[deposit]", err);
+    return { error: "The payment didn't go through. No charge was made. Please try again or call us." };
+  }
+  revalidatePath(`/p/${token}`);
+  return { ok: true };
+}
+
+export async function financingAction(token: string): Promise<void> {
+  const p = await authorizedAny(token);
+  if (!p) return;
+  const { recordFinancingInterest } = await import("@/lib/services/payments");
+  await recordFinancingInterest(p.id).catch((e) => console.error("[financing click]", e));
+}
