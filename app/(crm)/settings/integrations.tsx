@@ -1,11 +1,13 @@
 import { appUrl } from "@/lib/env";
 import { formatDateTime } from "@/lib/format";
-import { disconnectCalendarAction, disconnectQuickBooksAction } from "../ops-actions";
+import { disconnectCalendarAction, disconnectQuickBooksAction, setIncomeAccountAction } from "../ops-actions";
 
 type Status = { label: string; ok: boolean; detail: string };
 
 export function IntegrationsPanel(props: {
   quickbooks: { connected: boolean; env: string; connectedAt: string | null; refreshExpiresAt: string | null };
+  incomeAccounts: { id: string; name: string }[] | null;
+  incomeAccount: { id: string; name: string } | null;
   statuses: Status[];
   notice: string | null;
 }) {
@@ -31,6 +33,27 @@ export function IntegrationsPanel(props: {
         )}
       </div>
       <p className="mt-1 text-xs text-gray-500">Needed for card deposits, estimates and final invoices. Intuit redirect URI: {base}/api/quickbooks/callback</p>
+      {props.quickbooks.connected && props.incomeAccounts && (
+        <form action={setIncomeAccountAction} className="mt-3 flex flex-wrap items-end gap-2 text-sm">
+          <div>
+            <label className="label" htmlFor="accountId">
+              Income account for CRM sales (deposits, invoices)
+            </label>
+            <select id="accountId" name="accountId" className="input" defaultValue={props.incomeAccount?.id ?? ""}>
+              <option value="" disabled>
+                Choose an account…
+              </option>
+              {props.incomeAccounts.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <button className="btn-secondary">Save</button>
+          {!props.incomeAccount && <p className="w-full text-xs text-amber-800">Not chosen yet: sales go to the first income account QuickBooks lists.</p>}
+        </form>
+      )}
 
       <ul className="mt-4 space-y-1 text-sm">
         {props.statuses.map((s) => (

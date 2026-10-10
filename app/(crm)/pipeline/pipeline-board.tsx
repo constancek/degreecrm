@@ -13,6 +13,7 @@ import {
   type DragEndEvent,
 } from "@dnd-kit/core";
 import { STAGES, tradeLabel } from "@/lib/stages";
+import { markDragged, suppressClickAfterDrag } from "@/lib/client/drag-click-guard";
 import { initials, timeAgo } from "@/lib/format";
 import type { LeadStage, Trade } from "@/generated/prisma/enums";
 import { changeStageAction } from "../actions";
@@ -73,7 +74,10 @@ export function PipelineBoard({ leads, showLost }: { leads: BoardLead[]; showLos
   return (
     <>
       {error && <p className="mx-4 mb-2 rounded-md bg-red-50 p-2 text-sm text-red-700">{error}</p>}
-      <DndContext id={dndId} sensors={sensors} onDragEnd={onDragEnd}>
+      <DndContext id={dndId} sensors={sensors} onDragStart={markDragged} onDragEnd={(e) => {
+          markDragged();
+          onDragEnd(e);
+        }}>
         <div className="flex flex-1 gap-3 overflow-x-auto px-4 pb-4">
           {columns.map((col) => (
             <Column
@@ -124,7 +128,7 @@ function Card({ lead }: { lead: BoardLead }) {
       data-lead-id={lead.id}
       className={`card cursor-grab p-3 text-sm active:cursor-grabbing ${isDragging ? "z-10 shadow-lg" : ""}`}
     >
-      <Link href={`/leads/${lead.id}`} className="font-medium text-gray-900 hover:underline">
+      <Link href={`/leads/${lead.id}`} className="font-medium text-gray-900 hover:underline" draggable={false} onClick={suppressClickAfterDrag}>
         {lead.customerName}
       </Link>
       <p className="mt-0.5 line-clamp-2 text-gray-600">{lead.title}</p>

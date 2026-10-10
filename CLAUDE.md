@@ -9,6 +9,9 @@ the user says so. Before each phase: post a short plan (files, models, routes, e
 ## Status
 
 - All six phases are built (see CHANGELOG.md). Now in "test with real accounts and fix" mode.
+- Open items to raise with the owner when everything else is done:
+  - **Review requests**: the owner hasn't decided how reviews should work yet (today: next-morning text with the
+    Google review link from Settings, then stage review_requested). Remind them to revisit this at the end.
 
 ## Stack
 

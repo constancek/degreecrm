@@ -9,11 +9,13 @@ import {
   PointerSensor,
   useDraggable,
   useDroppable,
+  pointerWithin,
   useSensor,
   useSensors,
   type DragEndEvent,
 } from "@dnd-kit/core";
 import { loadGoogleMaps } from "@/lib/client/maps-loader";
+import { markDragged, suppressClickAfterDrag } from "@/lib/client/drag-click-guard";
 import { findSlotsAction, placeOnBoardAction } from "../ops-actions";
 
 type Tech = { id: string; name: string; color: string; calendar: boolean };
@@ -136,7 +138,11 @@ export function DispatchBoard(props: {
       {error && <p className="mx-4 mb-2 rounded-md bg-red-50 p-2 text-sm text-red-700">{error}</p>}
       {pending && <p className="mx-4 mb-2 text-xs text-gray-500">Saving…</p>}
 
-      <DndContext id={dndId} sensors={sensors} onDragEnd={onDragEnd}>
+      {/* Drop where the pointer is (not where the card overlaps most), so the time is where you let go. */}
+      <DndContext id={dndId} sensors={sensors} onDragStart={markDragged} onDragEnd={(e) => {
+          markDragged();
+          onDragEnd(e);
+        }} collisionDetection={pointerWithin}>
         <div className="grid flex-1 gap-3 px-4 pb-4 xl:grid-cols-[260px_1fr]">
           <aside className="space-y-3">
             <section className="card p-3">
@@ -187,20 +193,25 @@ function UnscheduledCard({ item }: { item: Unscheduled }) {
 }
 
 function VisitBlock({ v, color, style, compact }: { v: Visit; color: string; style?: React.CSSProperties; compact?: boolean }) {
+  const router = useRouter();
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id: `visit:${v.id}`, disabled: ["done", "cancelled"].includes(v.status) });
+  const href = v.jobId ? `/jobs/${v.jobId}` : `/leads/${v.leadId}`;
   return (
     <div
       ref={setNodeRef}
       {...listeners}
       {...attributes}
+      // The whole block drags; a plain click (no drag) opens the job or lead.
+      onClick={(e) => {
+        suppressClickAfterDrag(e);
+        if (!e.defaultPrevented) router.push(href);
+      }}
       data-visit={v.id}
       style={{ ...style, borderLeftColor: color, transform: transform ? `translate(${transform.x}px, ${transform.y}px)` : undefined }}
-      className={`overflow-hidden rounded border border-l-4 bg-white px-1.5 py-0.5 text-[11px] leading-tight shadow-sm ${isDragging ? "z-50 shadow-lg" : "z-10"} ${v.status === "done" ? "opacity-60" : ""}`}
+      className={`cursor-grab overflow-hidden rounded border border-l-4 bg-white px-1.5 py-0.5 text-[11px] leading-tight shadow-sm ${isDragging ? "z-50 shadow-lg" : "z-10"} ${v.status === "done" ? "opacity-60" : ""}`}
       title={`${v.customer} · ${v.title} · ${TIME.format(v.start)}–${TIME.format(v.end)}`}
     >
-      <Link href={v.jobId ? `/jobs/${v.jobId}` : `/leads/${v.leadId}`} className="font-semibold hover:underline" onPointerDown={(e) => e.stopPropagation()}>
-        {v.customer}
-      </Link>
+      <p className="font-semibold">{v.customer}</p>
       {!compact && <p className="truncate text-gray-600">{v.title}</p>}
       <p className="text-gray-500">
         {TIME.format(v.start)}

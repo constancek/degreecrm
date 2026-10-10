@@ -11,7 +11,7 @@ import { createFinalInvoice, recordFinalPayment, updateJob } from "@/lib/service
 import { sendCustomerText } from "@/lib/services/messages";
 import { saveSequence, stopEnrollmentManually } from "@/lib/services/sequences";
 import { findSlots } from "@/lib/services/dispatch";
-import { disconnect as disconnectQuickBooks } from "@/lib/services/quickbooks-auth";
+import { disconnect as disconnectQuickBooks, getQuickBooksClient, setIncomeAccount } from "@/lib/services/quickbooks-auth";
 import { db } from "@/lib/db";
 import type { PaymentMethod, VisitStatus } from "@/generated/prisma/enums";
 
@@ -239,5 +239,15 @@ export async function disconnectQuickBooksAction(): Promise<void> {
   const user = await requireUser();
   if (user.role !== "owner") return;
   await disconnectQuickBooks();
+  revalidatePath("/settings");
+}
+
+export async function setIncomeAccountAction(fd: FormData): Promise<void> {
+  const user = await requireUser();
+  if (user.role !== "owner") return;
+  const id = String(fd.get("accountId") ?? "");
+  const qbo = await getQuickBooksClient();
+  const account = (await qbo?.listIncomeAccounts())?.find((a) => a.id === id);
+  if (account) await setIncomeAccount(account);
   revalidatePath("/settings");
 }

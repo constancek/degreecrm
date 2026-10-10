@@ -246,6 +246,17 @@ describe("texting", () => {
     expect(await db.enrollment.count({ where: { leadId: lead.id, status: "active" } })).toBe(0);
   });
 
+  it("a text from a number not in the CRM creates nothing, only a Discord note", async () => {
+    await sentProposal();
+    const before = { customers: await db.customer.count(), leads: await db.lead.count() };
+    await handleInbound({ quoId: "in_unknown", from: "+15139990000", body: "Hi, do you do furnaces?" });
+    expect({ customers: await db.customer.count(), leads: await db.lead.count() }).toEqual(before);
+    expect(await db.message.count({ where: { quoMessageId: "in_unknown" } })).toBe(0);
+    const { processOutbox } = await import("@/lib/services/outbox");
+    await processOutbox();
+    expect(discord.sent.some((m) => m.content?.includes("not in the CRM"))).toBe(true);
+  });
+
   it("an urgent text alerts Discord", async () => {
     await sentProposal();
     await handleInbound({ quoId: "in_3", from: "+15135550123", body: "Water heater is flooding the basement!" });

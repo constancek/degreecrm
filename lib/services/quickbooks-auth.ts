@@ -15,6 +15,7 @@ import {
 import type { Prisma } from "@/generated/prisma/client";
 
 const KEY = "quickbooks";
+const INCOME_KEY = "quickbooks_income_account";
 const SCOPES = "com.intuit.quickbooks.accounting com.intuit.quickbooks.payment";
 
 type Stored = {
@@ -146,12 +147,24 @@ export async function getQuickBooksClient(): Promise<QuickBooksClient | null> {
   if (mock()) return createMockQuickBooksClient();
   const s = await stored();
   if (!s) return null;
+  const income = await db.setting.findUnique({ where: { key: INCOME_KEY } });
   return createQuickBooksClient({
     realmId: s.realmId,
+    incomeAccountId: (income?.value as { id?: string } | null)?.id ?? null,
     getAccessToken: async () => {
       const token = await refreshTokens();
       if (!token) throw new Error("QuickBooks is not connected");
       return token;
     },
   });
+}
+
+export async function getIncomeAccountSetting(): Promise<{ id: string; name: string } | null> {
+  const row = await db.setting.findUnique({ where: { key: INCOME_KEY } });
+  return (row?.value as { id: string; name: string } | undefined) ?? null;
+}
+
+export async function setIncomeAccount(account: { id: string; name: string }) {
+  const value = account as unknown as Prisma.InputJsonValue;
+  await db.setting.upsert({ where: { key: INCOME_KEY }, create: { key: INCOME_KEY, value }, update: { value } });
 }

@@ -13,10 +13,12 @@ import { PLACEHOLDER_KEY_TERMS, PLACEHOLDER_TERMS, currentTerms } from "@/lib/se
 import { listTaxRates } from "@/lib/services/tax";
 import { CompanySettings, TaxSettings, TermsSettings } from "./owner-settings";
 import { CalendarPanel, IntegrationsPanel } from "./integrations";
-import { connectionStatus } from "@/lib/services/quickbooks-auth";
+import { connectionStatus, getIncomeAccountSetting, getQuickBooksClient } from "@/lib/services/quickbooks-auth";
 import Link from "next/link";
 
 export const metadata: Metadata = { title: "Settings" };
+
+const isOwnerUser = (u: { role: string }) => u.role === "owner";
 
 const NOTICES: Record<string, string> = {
   connected: "Connected.",
@@ -31,6 +33,13 @@ export default async function SettingsPage({ searchParams }: PageProps<"/setting
   const sp = await searchParams;
   const me = await db.user.findUniqueOrThrow({ where: { id: user.id } });
   const qbo = await connectionStatus();
+  const incomeAccount = await getIncomeAccountSetting();
+  const incomeAccounts =
+    isOwnerUser(user) && qbo.connected
+      ? await getQuickBooksClient()
+          .then((c) => c?.listIncomeAccounts() ?? null)
+          .catch(() => null)
+      : null;
   const isOwner = user.role === "owner";
   const [staff, discordStages, connections, company, terms, taxRates] = await Promise.all([
     isOwner ? listActiveStaff() : Promise.resolve([]),
@@ -79,6 +88,8 @@ export default async function SettingsPage({ searchParams }: PageProps<"/setting
       {isOwner && (
         <IntegrationsPanel
           notice={typeof sp.quickbooks === "string" ? `QuickBooks: ${NOTICES[sp.quickbooks] ?? sp.quickbooks}` : null}
+          incomeAccounts={incomeAccounts}
+          incomeAccount={incomeAccount}
           quickbooks={{
             connected: qbo.connected,
             env: qbo.env,

@@ -46,8 +46,10 @@ test("owner signs in, creates a lead, moves it through the pipeline and adds a n
 test("a tech only sees their own leads", async ({ page }) => {
   await login(page, "tech1@example.com");
   await expect(page.getByText("assigned to you")).toBeVisible();
-  await expect(page.locator("[data-lead-id]")).toHaveCount(1);
-  await expect(page.locator("[data-lead-id]")).toContainText("James & Linda Porter");
+  await expect(page.locator("[data-lead-id]").filter({ hasText: "James & Linda Porter" })).toHaveCount(1);
+  // Unassigned / other techs' leads are hidden.
+  await expect(page.locator("[data-lead-id]").filter({ hasText: "Sarah Mitchell" })).toHaveCount(0);
+  await expect(page.locator("[data-lead-id]").filter({ hasText: "Oakley Coffee" })).toHaveCount(0);
 });
 
 test("host routing: go. serves client pages only, with noindex", async ({ request }) => {

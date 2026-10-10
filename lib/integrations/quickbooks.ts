@@ -30,6 +30,7 @@ export type QboCustomerInput = {
 };
 
 export interface QuickBooksClient {
+  listIncomeAccounts(): Promise<{ id: string; name: string }[]>;
   findOrCreateCustomer(c: QboCustomerInput): Promise<string>;
   createEstimate(input: { customerId: string; lines: QboLine[]; memo: string; email: string | null }): Promise<string>;
   /** Charge a card token. `requestId` makes retries safe (Intuit idempotency). */
@@ -61,7 +62,13 @@ export class QuickBooksError extends Error {
 const dollars = (cents: number) => Math.round(cents) / 100;
 const escapeQuery = (s: string) => s.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
 
-export function createQuickBooksClient(opts: { realmId: string; getAccessToken: () => Promise<string>; env?: QboEnv }): QuickBooksClient {
+export function createQuickBooksClient(opts: {
+  realmId: string;
+  getAccessToken: () => Promise<string>;
+  env?: QboEnv;
+  /** Income account all CRM sales post to (Settings → Integrations). */
+  incomeAccountId?: string | null;
+}): QuickBooksClient {
   const env = opts.env ?? qboEnv();
   const base = `${QBO_URLS.accounting(env)}/v3/company/${opts.realmId}`;
 
@@ -79,13 +86,28 @@ export function createQuickBooksClient(opts: { realmId: string; getAccessToken: 
   const query = <T>(q: string) => qbo<{ QueryResponse: T }>(`/query?query=${encodeURIComponent(q)}`).then((r) => r.QueryResponse);
 
   let serviceItemId: string | null = null;
+  /** The "CRM Services" item every line uses; its income account decides where sales land in the books. */
   async function serviceItem(): Promise<string> {
     if (serviceItemId) return serviceItemId;
-    const found = await query<{ Item?: { Id: string }[] }>("select Id from Item where Name = 'CRM Services' and Active = true");
-    if (found.Item?.[0]) return (serviceItemId = found.Item[0].Id);
-    const income = await query<{ Account?: { Id: string }[] }>("select Id from Account where AccountType = 'Income' maxresults 1");
-    const accountId = income.Account?.[0]?.Id;
+    let accountId = opts.incomeAccountId ?? null;
+    if (!accountId) {
+      const income = await query<{ Account?: { Id: string }[] }>("select Id from Account where AccountType = 'Income' and Active = true maxresults 1");
+      accountId = income.Account?.[0]?.Id ?? null;
+    }
     if (!accountId) throw new QuickBooksError("No income account in QuickBooks to post services to", 400);
+    const found = await query<{ Item?: { Id: string; SyncToken: string; IncomeAccountRef?: { value: string } }[] }>(
+      "select * from Item where Name = 'CRM Services' and Active = true",
+    );
+    const item = found.Item?.[0];
+    if (item) {
+      if (item.IncomeAccountRef?.value !== accountId) {
+        await qbo("/item", {
+          method: "POST",
+          body: JSON.stringify({ Id: item.Id, SyncToken: item.SyncToken, sparse: true, IncomeAccountRef: { value: accountId } }),
+        });
+      }
+      return (serviceItemId = item.Id);
+    }
     const created = await qbo<{ Item: { Id: string } }>("/item", {
       method: "POST",
       body: JSON.stringify({ Name: "CRM Services", Type: "Service", IncomeAccountRef: { value: accountId } }),
@@ -104,6 +126,12 @@ export function createQuickBooksClient(opts: { realmId: string; getAccessToken: 
   }
 
   return {
+    async listIncomeAccounts() {
+      const res = await query<{ Account?: { Id: string; Name: string; FullyQualifiedName?: string }[] }>(
+        "select Id, Name, FullyQualifiedName from Account where AccountType = 'Income' and Active = true",
+      );
+      return (res.Account ?? []).map((a) => ({ id: a.Id, name: a.FullyQualifiedName ?? a.Name }));
+    },
     async findOrCreateCustomer(c) {
       const name = c.name.slice(0, 100);
       const existing = await query<{ Customer?: { Id: string; PrimaryEmailAddr?: { Address?: string } }[] }>(
@@ -242,6 +270,12 @@ export function createMockQuickBooksClient(): QuickBooksClient & { state: MockSt
   const next = (p: string) => `${p}${++mockState.seq}`;
   return {
     state: mockState,
+    async listIncomeAccounts() {
+      return [
+        { id: "1", name: "Services" },
+        { id: "2", name: "Installation Income" },
+      ];
+    },
     async findOrCreateCustomer() {
       return next("cust");
     },
