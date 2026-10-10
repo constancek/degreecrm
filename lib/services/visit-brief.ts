@@ -106,10 +106,11 @@ export function talkingPoints(trade: Trade, facts: PropertyFacts | null, history
   if (facts?.yearBuilt) {
     const age = year - facts.yearBuilt;
     const life = LIFESPAN[trade];
-    if (age >= life.years)
-      out.push(
-        `Built in ${facts.yearBuilt}. If the ${life.thing} is original, it's about ${age} years old (typical life ~${life.years}). Show the replacement option.`,
-      );
+    // Past ~2 lifespans the original equipment is surely gone; ask instead of guessing.
+    if (age > life.years * 2)
+      out.push(`Built in ${facts.yearBuilt}. The ${life.thing} has likely been replaced before; check its age on the data plate and show the replacement option if it's past ~${life.years} years.`);
+    else if (age >= life.years)
+      out.push(`Built in ${facts.yearBuilt}. If the ${life.thing} is original, it's about ${age} years old (typical life ~${life.years}). Show the replacement option.`);
   }
   if (facts?.lastSaleDate) {
     const months = (now.getTime() - new Date(facts.lastSaleDate).getTime()) / (30.4 * 24 * 3_600_000);

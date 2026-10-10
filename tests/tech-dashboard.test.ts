@@ -128,5 +128,9 @@ describe("pre-visit brief", () => {
     expect(points.join(" ")).toMatch(/Built in 1998\. If the furnace \/ AC is original/);
     expect(points.join(" ")).toMatch(/Bought 6 months ago/);
     expect(talkingPoints("hvac", null, history, now)).toEqual([]);
+    // A 1929 house: don't claim 97-year-old equipment.
+    const old = talkingPoints("hvac", { ...SAMPLE_FACTS, yearBuilt: 1929, lastSaleDate: null }, history, now).join(" ");
+    expect(old).toMatch(/likely been replaced before; check its age on the data plate/);
+    expect(old).not.toMatch(/97 years/);
   });
 });
