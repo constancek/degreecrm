@@ -1,3 +1,4 @@
+import { visitRow } from "@/lib/visit-row";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -6,7 +7,6 @@ import { NotFoundError } from "@/lib/services/actor";
 import { balanceCents, getJob } from "@/lib/services/jobs";
 import { listActiveStaff } from "@/lib/services/users";
 import { formatCents } from "@/lib/money";
-import { formatDateTime } from "@/lib/format";
 import { formatPhone } from "@/lib/phone";
 import { formatAddress } from "@/lib/notifications/discord-embeds";
 import { RecordFinalPaymentForm, ScheduleVisitForm, VisitList } from "@/components/ops/ops-forms";
@@ -46,15 +46,9 @@ export default async function JobPage({ params }: PageProps<"/jobs/[id]">) {
           <div className="mt-2">
             <VisitList
               canEdit={isOwner}
-              visits={job.visits.map((v) => ({
-                id: v.id,
-                kind: v.kind,
-                when: formatDateTime(v.start),
-                techName: v.tech.name,
-                status: v.status,
-                syncState: v.syncState,
-                syncError: v.syncError,
-              }))}
+              visits={job.visits.map(visitRow)}
+              techs={staff.map((s) => ({ id: s.id, name: s.name }))}
+              canText={Boolean(job.lead.customer.phone) && !job.lead.customer.smsOptOut}
             />
           </div>
           {isOwner && ["unscheduled", "scheduled", "in_progress"].includes(job.status) && (

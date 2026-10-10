@@ -1,5 +1,22 @@
 # Changelog
 
+## Dispatch-oriented pipeline (2026-10-10)
+
+- New board: New request → Needs scheduling → Needs tech → Scheduled → Needs reschedule → On the way → On site →
+  Estimate sent → Approved / Declined → Job scheduled → In progress → Completed → Invoiced → Paid → Review requested.
+  Columns can be collapsed (remembered per device); cards show the booked time, "No tech", "Late" and fee badges.
+- Booking: pick an arrival window (or exact time) plus time on site, with or without a tech. Without a tech the lead
+  waits in Needs tech (Dispatch shows it to drag onto a tech); assigning sends the confirmation.
+- Texts: confirmation names the address, day, arrival window ("sometime between 9 am and 6 pm" for all day) and the
+  technician; "has been moved to…" on reschedule; "Change of technician" when only the tech changes; "running behind,
+  new arrival about …" from the tech's Running late button; "we need to reschedule" when the tech can't make it.
+- My day (tech): On my way, Running late (30 min / 1 h / 2 h), Can't make it, Arrived; on site: present the estimate,
+  then Start work now (signed, no deposit, pay at the end), Schedule return visit, Declined – done (reason + service
+  call fee: no charge / collected / invoice), or Done – estimate later.
+- Declined estimates get a gentle follow-up drip (3, 14, 30 days). Service call fee default in Settings ($89).
+- Techs can send and present estimates for their own leads (texting the link stays owner-only).
+- New requests move to Needs scheduling after 4 hours (was 24), except ones where the customer already picked windows.
+
 ## Calendar, policy pages (2026-10-10)
 
 - **Calendar** (nav → Calendar, everyone): Month / Week / 3 Days / Day views of CRM visits plus your Google Calendar

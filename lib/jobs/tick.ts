@@ -7,18 +7,26 @@ import { ensureDefaultSequences, processDueEnrollments } from "@/lib/services/se
 import { pollCalendars, syncPendingVisits } from "@/lib/services/visits";
 import { pollInvoices, requestReviews } from "@/lib/services/jobs";
 import { refreshTokens } from "@/lib/services/quickbooks-auth";
+import { pollServiceFeeInvoices } from "@/lib/services/payments";
 import { retrySignedCopies } from "@/lib/services/signing";
 
 const HOUR = 3_600_000;
 const automation = SYSTEM("Automation");
 
-/** `new` → `follow_up` when no estimate is booked within 24 h. */
+/** Hours a new request can sit before it moves to "Needs scheduling" (and the booking texts start). */
+export const NEEDS_SCHEDULING_AFTER_HOURS = 4;
+
+/**
+ * `new` → `follow_up` ("Needs scheduling") when nothing is booked within 4 hours. Requests where the customer
+ * already picked arrival windows stay in New request until the owner confirms or declines them.
+ */
 async function autoFollowUp(now: Date) {
   const due = await db.lead.findMany({
     where: {
       stage: "new",
-      stageChangedAt: { lte: new Date(now.getTime() - 24 * HOUR) },
+      stageChangedAt: { lte: new Date(now.getTime() - NEEDS_SCHEDULING_AFTER_HOURS * HOUR) },
       visits: { none: { kind: "estimate", status: { not: "cancelled" } } },
+      bookings: { none: { status: "pending" } },
     },
     select: { id: true },
     take: 100,
@@ -64,6 +72,7 @@ export async function runTick(now = new Date()) {
     calendarPush: await step("calendarPush", () => syncPendingVisits()),
     calendarPoll: await step("calendarPoll", () => pollCalendars(now)),
     invoices: await step("invoices", () => (now.getUTCMinutes() % 10 === 0 ? pollInvoices() : Promise.resolve(0))),
+    serviceFees: await step("serviceFees", () => (now.getUTCMinutes() % 10 === 5 ? pollServiceFeeInvoices() : Promise.resolve(0))),
     reviews: await step("reviews", () => requestReviews(now)),
     signedCopies: await step("signedCopies", () => retrySignedCopies()),
     quickbooks: await step("quickbooks", () => keepQuickBooksAlive(now)),

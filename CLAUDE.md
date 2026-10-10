@@ -99,6 +99,12 @@ e2e/                      Playwright happy paths (production build on :3100 agai
 - Pipeline drags call `planStageMove` (what the stage needs) then `performStageMove` (does it). Backward moves are plain.
 - Booking requests: customer picks a day + 3-hour window (lib/booking.ts); any estimate `scheduleVisit` confirms the
   pending request. Texts from numbers not in the CRM are ignored. Deleting an event in Google cancels the visit + texts.
+- Dispatch pipeline (SPEC.md decision 2026-10-10): stage ids are stable but labels changed (`follow_up` = "Needs
+  scheduling", `estimate_scheduled` = "Scheduled", `estimate_approved` = "Approved"); board order is `STAGES` in
+  lib/stages.ts (`stageIndex` for "only forward" rules). `Visit.techId` is nullable ("Needs tech": no texts, no calendar).
+  `Visit.arrivalStart/End` = window told to the customer; `start/end` = tech's calendar block. Customer wording comes
+  from `arrivalOf` / `arrivalPhrase` (lib/booking.ts). Day-of: `runningLate`, `needsReschedule`, `wrapUpVisit`
+  (work_now | return_visit | declined | estimate_later) in visits.ts; service call fee in payments.ts.
 - Stage moves after signing: signed → estimate_approved; deposit doesn't move the stage (creates the Job); a job visit
   → job_scheduled; Start → job_in_progress; last visit done → job_completed → invoiced → payment_complete →
   review_requested. Drips start/stop in `onLeadStageChanged` (sequences.ts), called from `changeStage`.

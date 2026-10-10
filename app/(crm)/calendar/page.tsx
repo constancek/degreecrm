@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { requireUser } from "@/lib/session";
 import { addDaysYmd, easternMidnight, easternYmd } from "@/lib/services/dispatch";
-import { calendarItems, calendarUsers } from "@/lib/services/calendar";
+import { UNASSIGNED, calendarItems, calendarUsers } from "@/lib/services/calendar";
 import { holidaysBetween } from "@/lib/holidays";
 import { CalendarView, type CalendarType, type CalendarViewName } from "./calendar-view";
 
@@ -45,8 +45,8 @@ export default async function CalendarPage({ searchParams }: PageProps<"/calenda
 
   const users = await calendarUsers(user);
   const userParam = one("user");
-  const selectedUser = owner ? (users.some((u) => u.id === userParam) ? userParam! : "all") : user.id;
-  const userIds = selectedUser === "all" ? users.map((u) => u.id) : [selectedUser];
+  const selectedUser = owner ? (users.some((u) => u.id === userParam) || userParam === UNASSIGNED ? userParam! : "all") : user.id;
+  const userIds = selectedUser === "all" ? [...users.map((u) => u.id), ...(owner ? [UNASSIGNED] : [])] : [selectedUser];
 
   const dates = visibleDates(view, date);
   const endYmd = addDaysYmd(dates.at(-1)!, 1);
@@ -68,6 +68,7 @@ export default async function CalendarPage({ searchParams }: PageProps<"/calenda
       showHolidays={showHolidays}
       type={type}
       users={users.map((u) => ({ id: u.id, name: u.name, connected: u.connected }))}
+      showUnassigned={owner}
       selectedUser={selectedUser}
       meId={user.id}
       myCalendar={{ connected: Boolean(me?.connected), email: me?.calendarEmail ?? null }}

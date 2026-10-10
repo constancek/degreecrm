@@ -141,6 +141,23 @@ export async function requestBooking(
   return request;
 }
 
+/**
+ * Form values → visit times: `window` is an arrival window id (the customer's window; the tech's block is
+ * window start + `hours`) or "exact" with `time` (arrive at that time).
+ */
+export function bookingTimes(input: { date: string; window: string; time?: string; hours?: number }) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(input.date)) throw new ValidationError("Pick a date");
+  const hours = input.hours && input.hours > 0 && input.hours <= 12 ? input.hours : 1;
+  if (input.window === "exact") {
+    if (!/^\d{2}:\d{2}$/.test(input.time ?? "")) throw new ValidationError("Pick an arrival time");
+    const [h, m] = input.time!.split(":").map(Number) as [number, number];
+    const start = new Date(easternMidnight(input.date).getTime() + (h * 60 + m) * 60_000);
+    return { start, end: new Date(start.getTime() + hours * 3_600_000), arrivalStart: null, arrivalEnd: null };
+  }
+  const w = windowTimes(input.date, input.window);
+  return { start: w.start, end: new Date(w.start.getTime() + hours * 3_600_000), arrivalStart: w.start, arrivalEnd: w.end };
+}
+
 /** Window → visit start/end (UTC) for an Eastern date. */
 export function windowTimes(date: string, windowId: string) {
   const w = WINDOWS.find((x) => x.id === windowId);
@@ -149,15 +166,27 @@ export function windowTimes(date: string, windowId: string) {
   return { start: new Date(midnight + w.startHour * 3_600_000), end: new Date(midnight + w.endHour * 3_600_000) };
 }
 
-/** Owner confirms (optionally a different day/window): books the estimate visit; the customer gets the confirmation text. */
-export async function confirmBooking(actor: Actor, bookingId: string, input: { techId: string; date?: string; window?: string }) {
+/**
+ * Owner confirms (optionally a different day/window): books the service call with that arrival window.
+ * With a tech the customer gets the confirmation text; without one it waits in "Needs tech".
+ */
+export async function confirmBooking(actor: Actor, bookingId: string, input: { techId?: string | null; date?: string; window?: string; hours?: number }) {
   if (!isOwner(actor)) throw new ForbiddenError("Only the owner confirms bookings");
   const b = await db.bookingRequest.findUnique({ where: { id: bookingId } });
   if (!b) throw new NotFoundError("Booking request not found");
   if (b.status !== "pending") throw new ValidationError("This request was already handled");
   const { start, end } = windowTimes(input.date ?? b.date, input.window ?? b.window);
+  const hours = input.hours && input.hours > 0 && input.hours <= 12 ? input.hours : 1;
   // scheduleVisit marks the pending request confirmed and links the visit.
-  return scheduleVisit(actor, { leadId: b.leadId, kind: "estimate", techId: input.techId, start, end, notes: `Arrival window ${windowLabel(input.window ?? b.window)}` });
+  return scheduleVisit(actor, {
+    leadId: b.leadId,
+    kind: "estimate",
+    techId: input.techId || null,
+    start,
+    end: new Date(start.getTime() + hours * 3_600_000),
+    arrivalStart: start,
+    arrivalEnd: end,
+  });
 }
 
 export async function declineBooking(actor: Actor, bookingId: string, opts: { textCustomer?: string } = {}) {

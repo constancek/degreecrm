@@ -42,6 +42,7 @@ const COLORS = {
 };
 
 function initials(name: string) {
+  if (name === "No tech") return "NO TECH";
   return name
     .split(/\s+/)
     .map((p) => p[0])
@@ -192,6 +193,7 @@ export function CalendarView(props: {
   myCalendar: { connected: boolean; email: string | null };
   failed: string[];
   canBook: boolean;
+  showUnassigned?: boolean;
   mapsKey?: string;
 }) {
   const { view, date, today, days, items, holidays, users } = props;
@@ -200,7 +202,7 @@ export function CalendarView(props: {
   const search = useSearchParams();
   const [dialog, setDialog] = useState<AppointmentDefaults | null>(null);
 
-  const userNames = useMemo(() => new Map(users.map((u) => [u.id, u.name])), [users]);
+  const userNames = useMemo(() => new Map([...users.map((u) => [u.id, u.name] as [string, string]), ["unassigned", "No tech"]]), [users]);
   const showWho = props.selectedUser === "all" && users.length > 1;
   const byDay = useMemo(() => placeOnDays(items, holidays, days), [items, holidays, days]);
   const shown = days.slice(0, -1);
@@ -304,6 +306,7 @@ export function CalendarView(props: {
                 {u.connected ? "" : " (no Google Calendar)"}
               </option>
             ))}
+            {props.showUnassigned && <option value="unassigned">No tech yet</option>}
           </select>
         )}
         <label className="ml-1 flex items-center gap-2 text-sm text-gray-700">

@@ -36,12 +36,19 @@ enum LeadSource {
 }
 
 /// Pipeline stages in order (SPEC.md "Job pipeline"). `lost` is outside the order.
+/// Board order and labels live in lib/stages.ts (ids kept stable: follow_up = "Needs scheduling",
+/// estimate_scheduled = "Scheduled", estimate_approved = "Approved").
 enum LeadStage {
   new
   follow_up
+  needs_tech
   estimate_scheduled
+  needs_reschedule
+  on_the_way
+  on_site
   estimate_sent
   estimate_approved
+  estimate_declined
   job_scheduled
   job_in_progress
   job_completed
@@ -485,6 +492,7 @@ enum PaymentKind {
   deposit
   progress
   final
+  service_fee
 }
 
 enum PaymentMethod {
@@ -589,11 +597,25 @@ model Visit {
   leadId             String
   jobId              String?
   kind               VisitKind
-  techId             String
+  /// Null = booked without a tech yet ("Needs tech"); no texts or calendar event until one is assigned.
+  techId             String?
+  /// Time blocked on the tech's calendar.
   start              DateTime
   end                DateTime
+  /// Arrival window promised to the customer (e.g. 9–12). Null = arrive at `start`.
+  arrivalStart       DateTime?
+  arrivalEnd         DateTime?
+  /// Tech tapped "Running late": approximate new arrival time (already texted to the customer).
+  lateEta            DateTime?
   status             VisitStatus @default(scheduled)
   notes              String?
+  /// approved | declined | work_now | return_visit (estimate visits, set when the tech wraps up)
+  outcome            String?
+  /// Service call fee on a declined estimate: none | collected | invoiced | paid | waived
+  feeStatus          String?
+  feeCents           Int?
+  feeInvoiceId       String?
+  feeInvoiceLink     String?
   googleEventId      String?
   /// The tech whose calendar holds googleEventId (moves when the visit is reassigned).
   googleEventOwnerId String?
@@ -608,7 +630,7 @@ model Visit {
 
   lead        Lead         @relation(fields: [leadId], references: [id], onDelete: Cascade)
   job         Job?         @relation(fields: [jobId], references: [id], onDelete: Cascade)
-  tech        User         @relation("VisitTech", fields: [techId], references: [id], onDelete: Restrict)
+  tech        User?        @relation("VisitTech", fields: [techId], references: [id], onDelete: Restrict)
   enrollments Enrollment[]
 
   @@index([techId, start])

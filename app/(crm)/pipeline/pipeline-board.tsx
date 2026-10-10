@@ -2,7 +2,7 @@
 
 import { useBoardSensors } from "@/lib/client/dnd-sensors";
 import Link from "next/link";
-import { useId, useOptimistic, useState, useTransition } from "react";
+import { useEffect, useId, useOptimistic, useState, useTransition } from "react";
 import {
   DndContext,
   useDraggable,
@@ -28,6 +28,11 @@ export type BoardLead = {
   assignee: string | null;
   stageChangedAt: string;
   requested: string | null;
+  /** Next open visit: "Tue, Oct 14, 9 am – 12 pm". */
+  booked: string | null;
+  noTech: boolean;
+  late: string | null;
+  fee: string | null;
 };
 
 const TRADE_COLORS: Record<Trade, string> = {
@@ -47,6 +52,27 @@ export function PipelineBoard({ leads, showLost }: { leads: BoardLead[]; showLos
   // A stable id keeps dnd-kit's aria ids identical on server and client (no hydration mismatch).
   const dndId = useId();
   const columns = STAGES.filter((s) => s.id !== "lost" || showLost);
+
+  // Collapsed columns are remembered on this device.
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem("pipeline:collapsed") ?? "[]");
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- read once after hydration (server has no localStorage)
+      if (Array.isArray(saved)) setCollapsed(new Set(saved.filter((x) => typeof x === "string")));
+    } catch {}
+  }, []);
+  function toggle(id: string) {
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      try {
+        localStorage.setItem("pipeline:collapsed", JSON.stringify([...next]));
+      } catch {}
+      return next;
+    });
+  }
 
   const router = useRouter();
   const [dialog, setDialog] = useState<{ lead: BoardLead; stage: LeadStage; plan: StagePlan } | null>(null);
@@ -89,6 +115,8 @@ export function PipelineBoard({ leads, showLost }: { leads: BoardLead[]; showLos
               label={col.label}
               hint={col.enters}
               leads={optimistic.filter((l) => l.stage === col.id)}
+              collapsed={collapsed.has(col.id)}
+              onToggle={() => toggle(col.id)}
             />
           ))}
         </div>
@@ -110,18 +138,51 @@ export function PipelineBoard({ leads, showLost }: { leads: BoardLead[]; showLos
   );
 }
 
-function Column({ id, label, hint, leads }: { id: LeadStage; label: string; hint: string; leads: BoardLead[] }) {
+function Column({
+  id,
+  label,
+  hint,
+  leads,
+  collapsed,
+  onToggle,
+}: {
+  id: LeadStage;
+  label: string;
+  hint: string;
+  leads: BoardLead[];
+  collapsed: boolean;
+  onToggle: () => void;
+}) {
   const { setNodeRef, isOver } = useDroppable({ id });
+  if (collapsed) {
+    // Still a drop target; tap to expand.
+    return (
+      <section
+        ref={setNodeRef}
+        data-stage={id}
+        aria-label={label}
+        className={`flex w-11 shrink-0 flex-col items-center rounded-lg border bg-gray-100/80 py-2 ${isOver ? "border-brand ring-2 ring-brand/20" : "border-gray-200"}`}
+      >
+        <button type="button" onClick={onToggle} className="flex flex-1 flex-col items-center gap-2" title={`Show ${label}`} aria-label={`Show ${label} (${leads.length})`}>
+          <span className="rounded-full bg-white px-1.5 text-xs font-semibold text-gray-700">{leads.length}</span>
+          <span className="text-xs font-semibold whitespace-nowrap text-gray-700 [writing-mode:vertical-rl]">{label}</span>
+        </button>
+      </section>
+    );
+  }
   return (
     <section
       ref={setNodeRef}
       data-stage={id}
       aria-label={label}
-      className={`flex w-64 shrink-0 flex-col rounded-lg border bg-gray-100/80 ${isOver ? "border-brand ring-2 ring-brand/20" : "border-gray-200"}`}
+      className={`flex w-60 shrink-0 flex-col rounded-lg border bg-gray-100/80 ${isOver ? "border-brand ring-2 ring-brand/20" : "border-gray-200"}`}
     >
-      <header className="flex items-baseline justify-between px-3 pt-3 pb-2" title={hint}>
+      <header className="flex items-baseline justify-between gap-2 px-3 pt-3 pb-2" title={hint}>
         <h2 className="text-sm font-semibold text-gray-800">{label}</h2>
-        <span className="text-xs text-gray-500">{leads.length}</span>
+        <span className="ml-auto text-xs text-gray-500">{leads.length}</span>
+        <button type="button" onClick={onToggle} className="rounded px-1 text-gray-400 hover:bg-gray-200 hover:text-gray-700" aria-label={`Collapse ${label}`} title="Collapse">
+          ‹
+        </button>
       </header>
       <div className="flex min-h-24 flex-1 flex-col gap-2 px-2 pb-2">
         {leads.map((lead) => (
@@ -150,6 +211,14 @@ function Card({ lead }: { lead: BoardLead }) {
       <p className="mt-0.5 line-clamp-2 text-gray-600">{lead.title}</p>
       {lead.street && <p className="mt-0.5 truncate text-xs text-gray-500">{lead.street}</p>}
       {lead.requested && <p className="mt-1 text-xs font-medium text-amber-700">Requested {lead.requested}</p>}
+      {lead.booked && <p className="mt-1 text-xs font-medium text-gray-700">{lead.booked}</p>}
+      {(lead.noTech || lead.late || lead.fee) && (
+        <div className="mt-1 flex flex-wrap gap-1 text-[11px] font-medium">
+          {lead.noTech && <span className="rounded bg-red-100 px-1.5 py-0.5 text-red-800">No tech</span>}
+          {lead.late && <span className="rounded bg-amber-100 px-1.5 py-0.5 text-amber-800">Late · ~{lead.late}</span>}
+          {lead.fee && <span className="rounded bg-gray-100 px-1.5 py-0.5 text-gray-700">{lead.fee}</span>}
+        </div>
+      )}
       <div className="mt-2 flex items-center gap-2 text-xs">
         <span className={`rounded px-1.5 py-0.5 font-medium ${TRADE_COLORS[lead.trade]}`}>{tradeLabel(lead.trade)}</span>
         <span className="text-gray-400">{timeAgo(lead.stageChangedAt)}</span>

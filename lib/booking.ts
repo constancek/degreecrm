@@ -49,3 +49,34 @@ export function dateLabel(ymd: string): string {
 export function windowForTimes(startHourEt: number, endHourEt: number) {
   return WINDOWS.find((w) => w.startHour === startHourEt && w.endHour === endHourEt) ?? null;
 }
+
+const CLOCK = new Intl.DateTimeFormat("en-US", { timeZone: TZ, hour: "numeric", minute: "2-digit" });
+const hourEt = (d: Date) => Number(new Intl.DateTimeFormat("en-US", { timeZone: TZ, hour: "numeric", hour12: false }).format(d)) % 24;
+
+/** "9 am", "12:30 pm" (Eastern). */
+export function clock(d: Date): string {
+  return CLOCK.format(d).replace(":00", "").replace(" AM", " am").replace(" PM", " pm");
+}
+
+/** The arrival window promised for a visit: its own window, else a booking-window-shaped visit, else just the start. */
+export function arrivalOf(v: { start: Date; end: Date; arrivalStart?: Date | null; arrivalEnd?: Date | null }): { start: Date; end: Date | null } {
+  if (v.arrivalStart && v.arrivalEnd && v.arrivalEnd > v.arrivalStart) return { start: v.arrivalStart, end: v.arrivalEnd };
+  const onTheHour = v.start.getUTCMinutes() === 0 && v.end.getUTCMinutes() === 0;
+  if (onTheHour && windowForTimes(hourEt(v.start), hourEt(v.end))) return { start: v.start, end: v.end };
+  return { start: v.start, end: null };
+}
+
+/**
+ * How a text says the arrival time: "between 9 am and 12 pm", "sometime between 9 am and 6 pm" for the
+ * all-day window, or "at 10:30 am" when there's no window.
+ */
+export function arrivalPhrase(a: { start: Date; end: Date | null }): string {
+  if (!a.end) return `at ${clock(a.start)}`;
+  const allDay = a.end.getTime() - a.start.getTime() >= 8 * 3_600_000;
+  return `${allDay ? "sometime " : ""}between ${clock(a.start)} and ${clock(a.end)}`;
+}
+
+/** Short label for screens: "9 am – 12 pm" or "10:30 am". */
+export function arrivalLabel(a: { start: Date; end: Date | null }): string {
+  return a.end ? `${clock(a.start)} – ${clock(a.end)}` : clock(a.start);
+}

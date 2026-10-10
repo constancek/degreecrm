@@ -7,6 +7,7 @@ import { stageInfo } from "@/lib/stages";
 import type { LeadStage } from "@/generated/prisma/enums";
 import type { StagePlan, StageMovePayload } from "@/lib/services/stage-moves";
 import { performStageMoveAction } from "../actions";
+import { DeclineFields, ReasonSelect } from "@/components/ops/visit-fields";
 
 const METHODS = [
   ["check", "Check"],
@@ -31,7 +32,12 @@ export function StageMoveDialog(props: {
 }) {
   const { plan } = props;
   const [p, setP] = useState<StageMovePayload>(() => {
-    if (plan.kind === "scheduleEstimate") return { techId: plan.defaultTechId ?? plan.techs[0]?.id, date: plan.booking?.date ?? plan.dates[0]?.ymd, window: plan.booking?.window ?? "09-12" };
+    if (plan.kind === "scheduleEstimate")
+      return { techId: plan.noTech ? "" : (plan.defaultTechId ?? plan.techs[0]?.id), date: plan.booking?.date ?? plan.dates[0]?.ymd, window: plan.booking?.window ?? "09-12", hours: 1 };
+    if (plan.kind === "assignTech") return { techId: plan.defaultTechId ?? plan.techs[0]?.id };
+    if (plan.kind === "visitStatus") return { textCustomer: plan.canText };
+    if (plan.kind === "reschedule") return { reason: "tech_delayed", textCustomer: true };
+    if (plan.kind === "decline") return { fee: "none", feeDollars: plan.feeDollars, feeMethod: "card" };
     if (plan.kind === "scheduleJob") return { techId: plan.defaultTechId ?? plan.techs[0]?.id, date: todayEastern(), time: "09:00", hours: plan.defaultHours };
     if (plan.kind === "sendProposal") return { textCustomer: plan.canText };
     if (plan.kind === "recordApproval") return { optionId: plan.options[1]?.id ?? plan.options[0]?.id, signerName: plan.customerName };
@@ -54,7 +60,11 @@ export function StageMoveDialog(props: {
 
   const actionLabel: Record<string, string> = {
     lost: "Mark lost",
-    scheduleEstimate: plan.kind === "scheduleEstimate" && plan.booking ? "Confirm & text customer" : "Book estimate & text customer",
+    scheduleEstimate: p.techId ? "Book & text customer" : "Book without a tech",
+    assignTech: "Assign & text customer",
+    visitStatus: plan.kind === "visitStatus" && plan.status === "en_route" ? "On my way" : "Arrived",
+    reschedule: "Cancel visit · needs reschedule",
+    decline: "Mark declined",
     sendProposal: "Send proposal",
     recordApproval: "Record approval",
     recordDeposit: "Record deposit",
@@ -105,8 +115,49 @@ export function StageMoveDialog(props: {
                 </option>
               ))}
             </select>
+            <TechSelect techs={plan.techs} value={p.techId} onChange={(techId) => set({ techId })} allowNone />
+            <select className="input" aria-label="Time on site" value={String(p.hours ?? 1)} onChange={(e) => set({ hours: Number(e.target.value) })}>
+              {[0.5, 1, 1.5, 2, 3].map((h) => (
+                <option key={h} value={h}>
+                  {h} {h === 1 ? "hour" : "hours"} on site
+                </option>
+              ))}
+            </select>
+            <p className="text-xs text-gray-500">{p.techId ? "The customer gets the confirmation with the arrival window and technician." : "No text yet. The card waits in Needs tech until you assign someone."}</p>
+          </>
+        )}
+
+        {plan.kind === "assignTech" && (
+          <>
+            <p className="text-gray-600">Visit on {plan.label}. Assigning a tech texts the customer their arrival window and technician.</p>
             <TechSelect techs={plan.techs} value={p.techId} onChange={(techId) => set({ techId })} />
           </>
+        )}
+
+        {plan.kind === "visitStatus" && (
+          <>
+            <p className="text-gray-600">Visit on {plan.label}.</p>
+            {plan.status === "en_route" && plan.canText && (
+              <label className="flex items-center gap-2">
+                <input type="checkbox" checked={Boolean(p.textCustomer)} onChange={(e) => set({ textCustomer: e.target.checked })} /> Text the customer that the tech is on the way
+              </label>
+            )}
+          </>
+        )}
+
+        {plan.kind === "reschedule" && (
+          <>
+            <p className="text-gray-600">Cancels the visit on {plan.label} and moves the card to Needs reschedule. You&apos;ll get an alert to rebook it.</p>
+            <ReasonSelect value={p.reason} onChange={(reason) => set({ reason, textCustomer: reason !== "customer_request" })} />
+            <input className="input" aria-label="Note" placeholder="Note (optional)" value={p.note ?? ""} onChange={(e) => set({ note: e.target.value })} />
+            <label className="flex items-center gap-2">
+              <input type="checkbox" checked={Boolean(p.textCustomer)} onChange={(e) => set({ textCustomer: e.target.checked })} /> Text the customer we need to reschedule
+            </label>
+          </>
+        )}
+
+        {plan.kind === "decline" && (
+          <DeclineFields p={p} set={set} />
         )}
 
         {plan.kind === "sendProposal" &&
@@ -198,14 +249,15 @@ export function StageMoveDialog(props: {
   );
 }
 
-function TechSelect({ techs, value, onChange }: { techs: { id: string; name: string }[]; value?: string; onChange: (v: string) => void }) {
+function TechSelect({ techs, value, onChange, allowNone }: { techs: { id: string; name: string }[]; value?: string; onChange: (v: string) => void; allowNone?: boolean }) {
   return (
-    <select className="input" aria-label="Tech" value={value} onChange={(e) => onChange(e.target.value)}>
+    <select className="input" aria-label="Tech" value={value ?? ""} onChange={(e) => onChange(e.target.value)}>
       {techs.map((t) => (
         <option key={t.id} value={t.id}>
           {t.name}
         </option>
       ))}
+      {allowNone && <option value="">Assign a tech later</option>}
     </select>
   );
 }

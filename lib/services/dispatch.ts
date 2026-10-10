@@ -32,7 +32,7 @@ export function addDaysYmd(ymd: string, days: number): string {
 
 export async function boardData(actor: Actor, opts: { from: Date; to: Date }) {
   const techs = await db.user.findMany({ where: { active: true }, orderBy: [{ role: "asc" }, { name: "asc" }] });
-  const [visits, busy, unscheduledJobs, leadsNeedingEstimate] = await Promise.all([
+  const [visits, busy, unscheduledJobs, leadsNeedingEstimate, needsTech] = await Promise.all([
     listVisits(actor, { from: opts.from, to: opts.to }),
     busyBlocks(techs.map((t) => t.id), opts.from, opts.to),
     db.job.findMany({
@@ -51,8 +51,15 @@ export async function boardData(actor: Actor, opts: { from: Date; to: Date }) {
       orderBy: { createdAt: "asc" },
       take: 50,
     }),
+    // Booked without a tech, any upcoming date.
+    db.visit.findMany({
+      where: { techId: null, status: "scheduled", end: { gt: new Date() } },
+      include: { lead: { include: { customer: true, property: true } }, job: true },
+      orderBy: { start: "asc" },
+      take: 50,
+    }),
   ]);
-  return { techs, visits, busy, unscheduledJobs, leadsNeedingEstimate };
+  return { techs, visits: visits.filter((v) => v.techId), busy, unscheduledJobs, leadsNeedingEstimate, needsTech };
 }
 
 // ---- Slot finder ------------------------------------------------------------------
@@ -98,6 +105,7 @@ export async function findSlots(actor: Actor, raw: z.input<typeof slotQuery>, no
   const busyByTech = new Map<string, Busy[]>();
   for (const t of techs) busyByTech.set(t.id, []);
   for (const v of visits) {
+    if (!v.techId) continue;
     const loc = v.lead.property?.lat != null ? { lat: v.lead.property.lat, lng: v.lead.property.lng! } : null;
     busyByTech.get(v.techId)?.push({ start: v.start.getTime(), end: v.end.getTime(), loc, label: v.lead.property?.street ?? "previous job" });
   }

@@ -64,15 +64,16 @@ test("customer signs and pays the deposit; owner schedules; tech completes; invo
   await expect(page.getByRole("heading", { name: /Water heater leaking/ })).toBeVisible();
   const tomorrow = ymd(new Date(Date.now() + 86_400_000));
   await page.getByLabel("Date", { exact: true }).fill(tomorrow);
-  await page.getByLabel("Start", { exact: true }).fill("10:00");
-  await page.getByLabel("Hours", { exact: true }).fill("3");
-  await page.getByLabel("Tech", { exact: true }).selectOption({ label: "Mike Reyes" });
-  await page.getByRole("button", { name: "Schedule job visit" }).click();
-  await expect(page.getByText("Scheduled")).toBeVisible();
+  await page.getByLabel("Arrival window").selectOption("exact");
+  await page.getByLabel("Arrival time").fill("10:00");
+  await page.getByLabel("Time on site").selectOption("3");
+  await page.getByLabel("Technician", { exact: true }).selectOption({ label: "Mike Reyes" });
+  await page.getByRole("button", { name: "Schedule job visit & text customer" }).click();
+  await expect(page.getByText(/^Booked\./)).toBeVisible();
   await expect(page.getByRole("list", { name: "Visits" })).toContainText("Mike Reyes");
   const jobUrl = page.url();
 
-  // ---- Tech: my day → On my way → Start → Complete ----
+  // ---- Tech: my day → On my way → Start work → Complete ----
   const techCtx = await browser.newContext();
   const t = await techCtx.newPage();
   await login(t, "tech1@example.com");
@@ -80,9 +81,7 @@ test("customer signs and pays the deposit; owner schedules; tech completes; invo
   const card = t.locator("[data-visit]").first();
   await expect(card).toContainText("James & Linda Porter");
   await card.getByRole("button", { name: "On my way" }).click();
-  await expect(card.getByRole("button", { name: "On my way" })).toBeDisabled();
-  await card.getByRole("button", { name: "Start" }).click();
-  await expect(card.getByRole("button", { name: "Start" })).toBeDisabled();
+  await card.getByRole("button", { name: "Start work" }).click();
   await card.getByRole("button", { name: "Complete" }).click();
   await expect(card.getByText("Done ✓")).toBeVisible();
   await techCtx.close();
@@ -132,7 +131,7 @@ test("texts: one-off text, signed inbound webhook, sequences editor", async ({ p
   await expect(page.getByRole("list", { name: "Text messages" })).toContainText("Thanks, Tuesday works");
 
   await page.goto("/settings/texts");
-  await expect(page.getByRole("textbox", { name: "Sequence name" })).toHaveCount(5);
+  await expect(page.getByRole("textbox", { name: "Sequence name" })).toHaveCount(6);
   const first = page.locator("section").filter({ has: page.getByRole("textbox", { name: "Sequence name" }) }).first();
   await first.getByRole("button", { name: "Save" }).click();
   await expect(first.getByText("Saved")).toBeVisible();

@@ -75,6 +75,20 @@ Twelve Prisma models cover V1; every money field is an integer in cents, every t
 | 11 | `review_requested` | Next morning after payment | Review link text; maintenance drip enrolled (HVAC) |
 | – | `lost` | Owner marks lost, or 60 days idle | Drips stop; reason recorded |
 
+> **Decision (2026-10-10): dispatch-oriented pipeline.** Home-service flow, every first visit ends with a signed estimate
+> (compliance, even under $1,000). Board order and labels (ids kept stable):
+> New request (`new`) → Needs scheduling (`follow_up`, after 4 h unless the customer already picked windows) → Needs tech
+> (`needs_tech`, time agreed, no tech, no text yet) → Scheduled (`estimate_scheduled`, confirmation text: address, day,
+> arrival window, technician) → Needs reschedule (`needs_reschedule`, tech can't make it / customer asked; visit cancelled,
+> customer + owner told) → On the way (`on_the_way`, tech taps On my way) → On site (`on_site`, Arrived) → Estimate sent →
+> Approved (signed) or Declined (`estimate_declined`: reason, optional service call fee collected or invoiced, gentle drip
+> at 3/14/30 days) → from Approved: **Start work now** (job without deposit, paid at the end → In progress) or a return
+> visit (Job scheduled; deposit rules apply) → Completed → Invoiced → Paid → Review requested.
+> Bookings store an arrival window (9–12, 12–3, 3–6, all day 9–6, or an exact time) separately from the tech's calendar
+> block (window start + time on site). "Running late" (+30 min / 1 h / 2 h) texts the new approximate arrival. Moving a
+> visit texts "has been moved to…"; changing only the tech texts "Change of technician". Techs can send/present
+> estimates for their own leads (no texting the link).
+
 Terms: store the full T&C as a versioned markdown file in the repo (`terms/v1.md`); `Signature.termsVersion` records which one the client accepted.
 
 > **Decision (2026-10-10):** T&C, key terms, company details and logo are edited in Settings instead of repo files. T&C are stored as immutable versions (`TermsVersion`); a sent proposal records the version it was sent with. The price book starts empty and is entered in the app. Sales tax applies to every line at the job address's county rate (Settings → Sales tax rates).

@@ -110,8 +110,16 @@ export function CompanySettings({
           <Field label="Acorn Finance contractor link (shows “Pay monthly”)" name="acornLink" defaultValue={company.acornLink} placeholder="https://…" />
         </div>
 
+        <div className="sm:col-span-3">
+          <Field
+            label="Service call fee (charged when an estimate is declined, if the tech chooses)"
+            name="serviceCallFee"
+            defaultValue={(company.serviceCallFeeCents / 100).toFixed(2)}
+          />
+        </div>
+
         <fieldset className="rounded-md border border-gray-200 p-3 sm:col-span-6">
-          <legend className="px-1 text-sm font-medium">Deposit</legend>
+          <legend className="px-1 text-sm font-medium">Deposit (jobs scheduled for a return visit; same-visit repairs pay at the end)</legend>
           <div className="flex flex-wrap items-center gap-2 text-sm">
             <input name="depositBelow" type="number" min={0} max={100} className="input w-20" defaultValue={company.depositBelowPercent} aria-label="Deposit percent below threshold" />
             % for jobs under $

@@ -210,18 +210,22 @@ async function markDepositPaid(proposalId: string, paymentId: string, actor: Act
   const created = await db.$transaction(async (tx) => {
     const res = await tx.proposal.updateMany({ where: { id: p.id, depositPaidAt: null }, data: { depositPaidAt: new Date() } });
     if (res.count === 0) return null;
-    const job = await tx.job.create({
-      data: {
-        leadId: p.leadId,
-        proposalId: p.id,
-        propertyId: p.lead.propertyId,
-        title: `${p.lead.title} — ${option.title}`.slice(0, 200),
-        assignedToId: p.lead.assignedToId,
-        totalCents: option.totalCents,
-        depositCents: payment.amountCents,
-        quickbooksEstimateId: p.quickbooksEstimateId,
-      },
-    });
+    // "Start work now" may already have created the job (no deposit taken then).
+    const existing = await tx.job.findUnique({ where: { proposalId: p.id } });
+    const job = existing
+      ? await tx.job.update({ where: { id: existing.id }, data: { depositCents: existing.depositCents + payment.amountCents } })
+      : await tx.job.create({
+          data: {
+            leadId: p.leadId,
+            proposalId: p.id,
+            propertyId: p.lead.propertyId,
+            title: `${p.lead.title} — ${option.title}`.slice(0, 200),
+            assignedToId: p.lead.assignedToId,
+            totalCents: option.totalCents,
+            depositCents: payment.amountCents,
+            quickbooksEstimateId: p.quickbooksEstimateId,
+          },
+        });
     await tx.payment.update({ where: { id: paymentId }, data: { jobId: job.id } });
     await recordActivity(tx, actor, {
       type: "deposit_paid",
@@ -265,4 +269,158 @@ export async function recordFinancingInterest(proposalId: string) {
   });
   await flushOutboxSoon();
   await alertOwner(`${p.lead.customer.name} wants to finance ${formatCents(option.totalCents)}. Start the Acorn application.`);
+}
+
+// ---- Same-visit work and service call fees ------------------------------------------------
+
+/**
+ * "Start work now" on a small repair: the signed estimate is enough, no deposit (the customer pays the
+ * full amount at the end). Returns the job (existing one if there is already one for this proposal).
+ */
+export async function createJobWithoutDeposit(actor: Actor, proposalId: string, techId: string | null) {
+  const { p, option } = await loadSigned(proposalId);
+  if (p.job) return p.job;
+  return db.$transaction(async (tx) => {
+    const job = await tx.job.create({
+      data: {
+        leadId: p.leadId,
+        proposalId: p.id,
+        propertyId: p.lead.propertyId,
+        title: `${p.lead.title} — ${option.title}`.slice(0, 200),
+        assignedToId: techId ?? p.lead.assignedToId,
+        totalCents: option.totalCents,
+        depositCents: 0,
+        quickbooksEstimateId: p.quickbooksEstimateId,
+      },
+    });
+    await recordActivity(tx, actor, {
+      type: "job_created",
+      leadId: p.leadId,
+      body: `Work started the same visit (${option.title}, ${formatCents(option.totalCents, { cents: true })}); paid at the end, no deposit`,
+      data: { proposalId: p.id, jobId: job.id },
+    });
+    return job;
+  });
+}
+
+export const FEE_METHODS = ["cash", "check", "card"] as const;
+
+/**
+ * Service call fee on a declined estimate: recorded as collected at the door, or invoiced through
+ * QuickBooks (emailed + the pay link texted). The visit carries the fee status for the board.
+ */
+export async function settleServiceFee(
+  actor: Actor,
+  visitId: string,
+  input: { mode: "collect" | "invoice"; amountCents: number; method?: (typeof FEE_METHODS)[number] },
+) {
+  if (!Number.isInteger(input.amountCents) || input.amountCents <= 0) throw new ValidationError("Enter the service call fee");
+  const v = await db.visit.findUniqueOrThrow({
+    where: { id: visitId },
+    include: { lead: { include: { customer: true, property: true, proposals: { orderBy: { version: "desc" }, take: 1 } } } },
+  });
+  const lead = v.lead;
+  const label = `Service call — ${lead.title}`.slice(0, 200);
+  const qbo = await getQuickBooksClient();
+
+  if (input.mode === "collect") {
+    const method = input.method ?? "cash";
+    const payment = await db.payment.create({
+      data: {
+        proposalId: lead.proposals[0]?.id ?? null,
+        kind: "service_fee",
+        method,
+        amountCents: input.amountCents,
+        status: "succeeded",
+        note: label,
+        createdById: actorUserId(actor),
+      },
+    });
+    await db.$transaction(async (tx) => {
+      await tx.visit.update({ where: { id: visitId }, data: { feeStatus: "collected", feeCents: input.amountCents } });
+      await recordActivity(tx, actor, {
+        type: "service_fee",
+        leadId: lead.id,
+        body: `Service call fee ${formatCents(input.amountCents, { cents: true })} collected (${method})`,
+        data: { visitId, paymentId: payment.id },
+      });
+    });
+    if (qbo) {
+      try {
+        const customerId = await quickbooksCustomerId(lead.customer, lead.property);
+        if (customerId) {
+          const booked = await qbo.recordPayment({
+            customerId,
+            lines: [{ description: label, qty: 1, unitCents: input.amountCents }],
+            memo: `Service call fee by ${method}`,
+            chargeId: null,
+            method,
+            estimateId: null,
+          });
+          await db.payment.update({ where: { id: payment.id }, data: { quickbooksPaymentId: booked.paymentId } });
+        }
+      } catch (err) {
+        await logQuickBooksError(lead.id, "recording the service call fee", err);
+      }
+    }
+    return;
+  }
+
+  // Invoice it.
+  await db.visit.update({ where: { id: visitId }, data: { feeStatus: "invoiced", feeCents: input.amountCents } });
+  if (!qbo) {
+    await db.$transaction(async (tx) => {
+      await recordActivity(tx, actor, { type: "service_fee", leadId: lead.id, body: `Service call fee ${formatCents(input.amountCents, { cents: true })} to invoice (QuickBooks not connected)`, data: { visitId } });
+      await enqueueDiscord(tx, { content: `🧾 Service call fee ${formatCents(input.amountCents, { cents: true })} for ${lead.customer.name}: QuickBooks isn't connected, invoice it by hand. ${appUrl()}/leads/${lead.id}` });
+    });
+    await flushOutboxSoon();
+    return;
+  }
+  try {
+    const customerId = await quickbooksCustomerId(lead.customer, lead.property);
+    if (!customerId) throw new ValidationError("QuickBooks customer missing");
+    const invoice = await qbo.createInvoice({
+      customerId,
+      lines: [{ description: label, qty: 1, unitCents: input.amountCents }],
+      memo: "Thank you for having Degree of Comfort out.",
+      email: lead.customer.email,
+      estimateId: null,
+    });
+    if (lead.customer.email) await qbo.sendInvoice(invoice.id, lead.customer.email);
+    await db.$transaction(async (tx) => {
+      await tx.visit.update({ where: { id: visitId }, data: { feeInvoiceId: invoice.id, feeInvoiceLink: invoice.link } });
+      await recordActivity(tx, actor, { type: "service_fee", leadId: lead.id, body: `Service call fee invoice #${invoice.id} for ${formatCents(input.amountCents, { cents: true })}`, data: { visitId } });
+    });
+    const first = lead.customer.name.split(/\s+/)[0];
+    await sendCustomerText(actor, {
+      customerId: lead.customerId,
+      leadId: lead.id,
+      body: `Hi ${first}, thanks for having Degree of Comfort out today. Your service call fee of ${formatCents(input.amountCents, { cents: true })} is ready to pay${invoice.link ? `: ${invoice.link}` : " (check your email for the invoice)"}.`,
+    });
+  } catch (err) {
+    await logQuickBooksError(lead.id, "creating the service call fee invoice", err);
+  }
+}
+
+/** Scheduler: service call fee invoices paid in QuickBooks. */
+export async function pollServiceFeeInvoices(limit = 30) {
+  const qbo = await getQuickBooksClient();
+  if (!qbo) return 0;
+  const visits = await db.visit.findMany({ where: { feeStatus: "invoiced", feeInvoiceId: { not: null } }, take: limit, orderBy: { updatedAt: "asc" } });
+  let paid = 0;
+  for (const v of visits) {
+    try {
+      if ((await qbo.invoiceBalanceCents(v.feeInvoiceId!)) <= 0) {
+        await db.$transaction(async (tx) => {
+          await tx.visit.update({ where: { id: v.id }, data: { feeStatus: "paid" } });
+          await tx.payment.create({ data: { kind: "service_fee", method: "quickbooks_invoice", amountCents: v.feeCents ?? 0, status: "succeeded", note: "Service call fee invoice paid" } });
+          await recordActivity(tx, SYSTEM("Payments"), { type: "service_fee", leadId: v.leadId, body: "Service call fee paid" });
+        });
+        paid++;
+      }
+    } catch (err) {
+      console.error("[qbo fee poll]", v.id, err);
+    }
+  }
+  return paid;
 }

@@ -3,7 +3,7 @@ import { requireOwner } from "@/lib/session";
 import { addDaysYmd, boardData, easternMidnight, easternYmd } from "@/lib/services/dispatch";
 import { formatAddress } from "@/lib/notifications/discord-embeds";
 import { DispatchBoard } from "./dispatch-board";
-import { dateLabel, windowLabel } from "@/lib/booking";
+import { arrivalLabel, arrivalOf, dateLabel, windowLabel } from "@/lib/booking";
 
 export const metadata: Metadata = { title: "Dispatch" };
 
@@ -29,7 +29,7 @@ export default async function DispatchPage({ searchParams }: PageProps<"/dispatc
       })}
       mapsKey={process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || null}
       techs={data.techs.map((t, i) => ({ id: t.id, name: t.name, color: COLORS[i % COLORS.length]!, calendar: Boolean(t.googleRefreshToken) }))}
-      visits={data.visits.map((v) => ({
+      visits={data.visits.flatMap((v) => (v.techId ? [{ ...v, techId: v.techId }] : [])).map((v) => ({
         id: v.id,
         techId: v.techId,
         leadId: v.leadId,
@@ -46,6 +46,23 @@ export default async function DispatchPage({ searchParams }: PageProps<"/dispatc
       }))}
       busy={data.busy.map((b) => ({ techId: b.techId, start: b.start.getTime(), end: b.end.getTime() }))}
       unscheduled={[
+        // Booked without a tech: drag onto a tech to assign (sends the customer their confirmation).
+        ...data.needsTech.map((v) => {
+            const a = arrivalOf(v);
+            return {
+              key: `needs-tech:${v.id}`,
+              leadId: v.leadId,
+              jobId: v.jobId,
+              kind: v.kind,
+              customer: v.lead.customer.name,
+              title: v.job?.title ?? v.lead.title,
+              address: formatAddress(v.lead.property),
+              minutes: Math.round((v.end.getTime() - v.start.getTime()) / 60_000),
+              requested: `${dateLabel(easternYmd(a.start))}, ${arrivalLabel(a)}`,
+              visitId: v.id,
+              bookedStart: v.start.getTime(),
+            };
+          }),
         ...data.unscheduledJobs.map((j) => ({
           key: `job:${j.id}`,
           leadId: j.leadId,

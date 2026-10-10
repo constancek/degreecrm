@@ -30,6 +30,8 @@ export type CompanyProfile = {
   acornLink: string;
   /** Google review link sent after payment. */
   googleReviewUrl: string;
+  /** Default service call fee the tech can charge when an estimate is declined. */
+  serviceCallFeeCents: number;
 };
 
 const DEFAULTS: CompanyProfile = {
@@ -50,6 +52,7 @@ const DEFAULTS: CompanyProfile = {
   ownerAlertPhone: "",
   acornLink: "",
   googleReviewUrl: "",
+  serviceCallFeeCents: 8900,
 };
 
 export async function getCompany(): Promise<CompanyProfile> {
@@ -78,6 +81,7 @@ const detailsInput = z.object({
   ownerAlertPhone: z.string().trim().max(40).default(""),
   acornLink: z.string().trim().max(500).default(""),
   googleReviewUrl: z.string().trim().max(500).default(""),
+  serviceCallFeeCents: z.number().int().min(0).max(100_000).optional(),
 });
 
 export async function saveCompanyDetails(actor: Actor, raw: unknown) {

@@ -14,7 +14,7 @@ import { sendProblems, getProposal, sendProposal } from "./proposals";
 import { recordPaperApproval } from "./signing";
 import { recordManualDeposit } from "./payments";
 import { balanceCents, completeJob, createFinalInvoice, recordFinalPayment, sendReviewRequest } from "./jobs";
-import { scheduleVisit, updateVisitStatus } from "./visits";
+import { RESCHEDULE_REASONS, needsReschedule, rescheduleVisit, scheduleVisit, updateVisitStatus, wrapUpVisit, type RescheduleReason } from "./visits";
 import { confirmBooking, windowTimes } from "./booking";
 import { easternMidnight } from "./dispatch";
 import type { PaymentMethod } from "@/generated/prisma/enums";
@@ -25,7 +25,11 @@ export type StagePlan =
   | { kind: "simple" }
   | { kind: "lost" }
   | { kind: "blocked"; message: string; href?: string; linkLabel?: string }
-  | { kind: "scheduleEstimate"; techs: { id: string; name: string }[]; defaultTechId: string | null; dates: { ymd: string; label: string }[]; booking: { id: string; date: string; window: string } | null }
+  | { kind: "scheduleEstimate"; techs: { id: string; name: string }[]; defaultTechId: string | null; dates: { ymd: string; label: string }[]; booking: { id: string; date: string; window: string } | null; noTech?: boolean }
+  | { kind: "assignTech"; visitId: string; label: string; techs: { id: string; name: string }[]; defaultTechId: string | null }
+  | { kind: "visitStatus"; visitId: string; status: "en_route" | "in_progress"; label: string; canText: boolean }
+  | { kind: "reschedule"; visitId: string; label: string }
+  | { kind: "decline"; visitId: string | null; feeDollars: string }
   | { kind: "sendProposal"; proposalId: string; problems: string[]; canText: boolean; phone: string | null }
   | { kind: "recordApproval"; proposalId: string; options: { id: string; title: string; total: string }[]; customerName: string }
   | { kind: "recordDeposit"; proposalId: string; defaultDollars: string }
@@ -43,6 +47,20 @@ export async function planStageMove(actor: Actor, leadId: string, stage: LeadSta
   const lead = await getLead(actor, leadId);
   if (stage === lead.stage) return { kind: "simple" };
   if (stage === "lost") return { kind: "lost" };
+
+  // The first visit drives the day-of columns.
+  const openVisit = await db.visit.findFirst({
+    where: { leadId, kind: "estimate", status: { in: ["scheduled", "en_route", "in_progress"] } },
+    orderBy: { start: "desc" },
+  });
+  const visitLabel = openVisit
+    ? new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }).format(openVisit.start)
+    : "";
+  // Cancelling for a reschedule works from any column.
+  if (stage === "needs_reschedule" && openVisit && ["scheduled", "en_route"].includes(openVisit.status)) {
+    if (!isOwner(actor) && openVisit.techId !== (actor as { id: string }).id) return { kind: "blocked", message: "Only the owner or the assigned tech can do this." };
+    return { kind: "reschedule", visitId: openVisit.id, label: visitLabel };
+  }
   // Moving backwards (or to the early stages) just moves the card.
   if (ORDER.indexOf(stage) < ORDER.indexOf(lead.stage) || stage === "new" || stage === "follow_up") return { kind: "simple" };
 
@@ -56,9 +74,15 @@ export async function planStageMove(actor: Actor, leadId: string, stage: LeadSta
   const draft = proposals.find((p) => p.status === "draft");
 
   switch (stage) {
+    case "needs_tech":
     case "estimate_scheduled": {
       const blocked = ownerOnly(actor);
       if (blocked) return blocked;
+      if (openVisit && !openVisit.techId) {
+        if (stage === "needs_tech") return { kind: "simple" };
+        return { kind: "assignTech", visitId: openVisit.id, label: visitLabel, techs, defaultTechId: lead.assignedToId };
+      }
+      if (openVisit) return { kind: "blocked", message: "This lead already has a booked visit. Change it from the lead page or the Dispatch board.", href: `/leads/${leadId}`, linkLabel: "Open lead" };
       const booking = await db.bookingRequest.findFirst({ where: { leadId, status: "pending" }, orderBy: { createdAt: "desc" } });
       return {
         kind: "scheduleEstimate",
@@ -66,7 +90,26 @@ export async function planStageMove(actor: Actor, leadId: string, stage: LeadSta
         defaultTechId: lead.assignedToId,
         dates: bookableDates(),
         booking: booking ? { id: booking.id, date: booking.date, window: booking.window } : null,
+        noTech: stage === "needs_tech",
       };
+    }
+    case "on_the_way":
+    case "on_site": {
+      if (!openVisit) return { kind: "blocked", message: "There's no booked visit to update. Book one first." };
+      if (!openVisit.techId) return { kind: "blocked", message: "Assign a tech to the visit first." };
+      if (!isOwner(actor) && openVisit.techId !== (actor as { id: string }).id) return { kind: "blocked", message: "This visit belongs to another tech." };
+      return {
+        kind: "visitStatus",
+        visitId: openVisit.id,
+        status: stage === "on_the_way" ? "en_route" : "in_progress",
+        label: visitLabel,
+        canText: Boolean(lead.customer.phone) && !lead.customer.smsOptOut,
+      };
+    }
+    case "estimate_declined": {
+      const latest = openVisit ?? (await db.visit.findFirst({ where: { leadId, kind: "estimate", status: "done", outcome: null }, orderBy: { start: "desc" } }));
+      const company = await getCompany();
+      return { kind: "decline", visitId: latest?.id ?? null, feeDollars: (company.serviceCallFeeCents / 100).toFixed(2) };
     }
     case "estimate_sent": {
       const blocked = ownerOnly(actor);
@@ -153,6 +196,10 @@ export type StageMovePayload = {
   time?: string;
   hours?: number;
   textCustomer?: boolean;
+  reason?: string;
+  fee?: "none" | "collect" | "invoice";
+  feeDollars?: string;
+  feeMethod?: "cash" | "check" | "card";
   optionId?: string;
   signerName?: string;
   note?: string;
@@ -177,10 +224,40 @@ export async function performStageMove(actor: Actor, leadId: string, stage: Lead
     case "blocked":
       throw new ValidationError(plan.message);
     case "scheduleEstimate": {
-      if (!payload.techId || !payload.date || !payload.window) throw new ValidationError("Pick a day, window and tech");
-      if (plan.booking) return confirmBooking(actor, plan.booking.id, { techId: payload.techId, date: payload.date, window: payload.window });
+      if (!payload.date || !payload.window) throw new ValidationError("Pick a day and arrival window");
+      const techId = payload.techId || null;
+      const hours = payload.hours && payload.hours > 0 ? payload.hours : 1;
+      if (plan.booking) return confirmBooking(actor, plan.booking.id, { techId, date: payload.date, window: payload.window, hours });
       const { start, end } = windowTimes(payload.date, payload.window);
-      return scheduleVisit(actor, { leadId, kind: "estimate", techId: payload.techId, start, end });
+      return scheduleVisit(actor, { leadId, kind: "estimate", techId, start, end: new Date(start.getTime() + hours * 3_600_000), arrivalStart: start, arrivalEnd: end });
+    }
+    case "assignTech": {
+      if (!payload.techId) throw new ValidationError("Choose a tech");
+      const v = await db.visit.findUniqueOrThrow({ where: { id: plan.visitId } });
+      return rescheduleVisit(actor, plan.visitId, { start: v.start, end: v.end, techId: payload.techId });
+    }
+    case "visitStatus":
+      return updateVisitStatus(actor, plan.visitId, plan.status, { notifyCustomer: plan.status === "en_route" && Boolean(payload.textCustomer) });
+    case "reschedule": {
+      const reason = (payload.reason ?? "customer_request") as RescheduleReason;
+      if (!(reason in RESCHEDULE_REASONS)) throw new ValidationError("Pick a reason");
+      return needsReschedule(actor, plan.visitId, { reason, note: payload.note, notifyCustomer: Boolean(payload.textCustomer) });
+    }
+    case "decline": {
+      const reason = payload.reason?.trim();
+      if (!reason) throw new ValidationError("Add a short reason");
+      if (!plan.visitId) {
+        await db.lead.update({ where: { id: leadId }, data: { lostReason: reason.slice(0, 300) } });
+        return changeStage(actor, leadId, "estimate_declined");
+      }
+      const fee = payload.fee ?? "none";
+      return wrapUpVisit(actor, plan.visitId, {
+        outcome: "declined",
+        reason,
+        fee,
+        feeCents: fee === "none" ? undefined : dollarsToCents(payload.feeDollars),
+        method: payload.feeMethod,
+      });
     }
     case "sendProposal":
       return sendProposal(actor, plan.proposalId, { textCustomer: Boolean(payload.textCustomer) });

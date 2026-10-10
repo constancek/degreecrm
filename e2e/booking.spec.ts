@@ -38,11 +38,11 @@ test("website booking request → owner confirms the window → visit booked, st
   await panel.getByLabel("Tech").selectOption({ label: "Dana Cole" });
   await panel.getByRole("button", { name: "Confirm & text customer" }).click();
   await expect(page.getByRole("list", { name: "Visits" })).toContainText("Dana Cole");
-  await expect(page.getByText("Estimate scheduled", { exact: true }).first()).toBeVisible();
+  await expect(page.getByRole("list", { name: "Activity timeline" })).toContainText("moved it from New request to Scheduled");
   await expect(page.getByRole("list", { name: "Text messages" })).toContainText("We got your request");
 });
 
-test("pipeline drag into Estimate scheduled opens the booking dialog and books it", async ({ page, request }) => {
+test("pipeline drag into Scheduled opens the booking dialog and books it", async ({ page, request }) => {
   await request.post("/api/intake/web", {
     headers: { origin: "https://cincydegreeofcomfort.com" },
     data: { name: "Drag Booker", phone: "513-555-0178", street: "78 Main St", message: "Breaker trips" },
@@ -58,11 +58,11 @@ test("pipeline drag into Estimate scheduled opens the booking dialog and books i
   await page.mouse.move(to.x + to.width / 2, to.y + 80, { steps: 15 });
   await page.mouse.up();
 
-  const dialog = page.getByRole("dialog", { name: "Move to Estimate scheduled" });
+  const dialog = page.getByRole("dialog", { name: "Move to Scheduled" });
   await expect(dialog).toBeVisible();
   await dialog.getByLabel("Arrival window").selectOption("09-12");
   await dialog.getByLabel("Tech").selectOption({ label: "Mike Reyes" });
-  await dialog.getByRole("button", { name: /Book estimate/ }).click();
+  await dialog.getByRole("button", { name: "Book & text customer" }).click();
   await expect(dialog).toBeHidden();
   await expect(target).toContainText("Drag Booker");
 

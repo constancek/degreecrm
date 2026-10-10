@@ -28,10 +28,11 @@ test("calendar: book an estimate for a new customer from the week view, then see
   await dialog.getByLabel("ZIP").fill("45202");
   await dialog.getByLabel("What's the job?").fill("Furnace making noise");
   await dialog.getByLabel("Date").fill(day);
-  await dialog.getByLabel("Start time").fill("10:30");
-  await dialog.getByLabel("Who's going").selectOption({ label: "Dana Cole" });
+  await dialog.getByLabel("Arrival window").selectOption("exact");
+  await dialog.getByLabel("Arrival time").fill("10:30");
+  await dialog.getByLabel("Technician").selectOption({ label: "Dana Cole" });
   if (SHOTS) await page.screenshot({ path: `${SHOTS}/new-appointment.png` });
-  await dialog.getByRole("button", { name: "Book appointment" }).click();
+  await dialog.getByRole("button", { name: "Book & text customer" }).click();
   await expect(dialog).toBeHidden();
 
   const block = page.locator(`[data-day="${day}"]`).getByRole("link", { name: /Cal Endar/ });
@@ -55,12 +56,12 @@ test("calendar: book an estimate for a new customer from the week view, then see
   const col = page.locator(`[data-day="${day}"]`).last();
   const box = (await col.boundingBox())!;
   await page.mouse.click(box.x + 20, box.y + 8 + 52 * 8 + 5); // 2 pm (grid starts at 6 am, 52 px an hour)
-  await expect(page.getByRole("dialog", { name: "New appointment" }).getByLabel("Start time")).toHaveValue("14:00");
+  await expect(page.getByRole("dialog", { name: "New appointment" }).getByLabel("Arrival time")).toHaveValue("14:00");
   await page.keyboard.press("Escape");
   await page.goto(`/calendar?view=day&date=${day}`);
   await page.locator(`[data-day="${day}"]`).getByRole("link", { name: /Cal Endar/ }).click();
   await expect(page.getByRole("heading", { name: /Furnace making noise/ })).toBeVisible();
-  await expect(page.getByText("Estimate Scheduled").first()).toBeVisible();
+  await expect(page.getByRole("list", { name: "Activity timeline" })).toContainText("moved it from New request to Scheduled");
 
   // iPad portrait + phone render without horizontal scrolling.
   for (const [w, h, name] of [

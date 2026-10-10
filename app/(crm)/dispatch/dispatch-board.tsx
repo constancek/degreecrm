@@ -43,6 +43,9 @@ type Unscheduled = {
   minutes: number;
   /** Customer's requested day + arrival window (booking request), if any. */
   requested: string | null;
+  /** Booked without a tech ("Needs tech"): the visit and its agreed time. */
+  visitId?: string;
+  bookedStart?: number;
 };
 
 const FIRST_HOUR = 7;
@@ -105,11 +108,21 @@ export function DispatchBoard(props: {
       if (visit) {
         const origDay = [...props.dayStarts].reverse().find((d) => d.ms <= visit.start)?.ms ?? dayMs;
         startMs = day.ms + (visit.start - origDay);
+      } else if (item?.bookedStart) {
+        // Keep the agreed time of day when assigning a "Needs tech" visit.
+        const origDay = [...props.dayStarts].reverse().find((d) => d.ms <= item.bookedStart!)?.ms ?? item.bookedStart - 9 * HOUR;
+        startMs = day.ms + (item.bookedStart - origDay);
       } else startMs = day.ms + 9 * HOUR;
     }
     if (visit) {
       if (visit.techId === techId && visit.start === startMs) return;
-      place({ visitId: visit.id, techId, start: new Date(startMs).toISOString(), durationMinutes: Math.round((visit.end - visit.start) / 60_000) });
+      const notifyCustomer = window.confirm(
+        visit.start === startMs ? "Text the customer about the new technician?" : "Text the customer the new time?",
+      );
+      place({ visitId: visit.id, techId, start: new Date(startMs).toISOString(), durationMinutes: Math.round((visit.end - visit.start) / 60_000), notifyCustomer });
+    } else if (item?.visitId) {
+      // Assigning a tech sends the customer their confirmation (arrival window + technician).
+      place({ visitId: item.visitId, techId, start: new Date(startMs).toISOString(), durationMinutes: item.minutes, notifyCustomer: true });
     } else if (item) {
       place({ leadId: item.leadId, jobId: item.jobId ?? undefined, kind: item.kind, techId, start: new Date(startMs).toISOString(), durationMinutes: item.minutes });
     }
@@ -194,9 +207,9 @@ function UnscheduledCard({ item }: { item: Unscheduled }) {
       <p className="font-medium">{item.customer}</p>
       <p className="text-gray-600">{item.title}</p>
       <p className="text-gray-400">
-        {item.kind === "job" ? "Job" : "Estimate"} · {item.minutes / 60} h{item.address ? ` · ${item.address.split(",")[0]}` : ""}
+        {item.kind === "job" ? "Job" : "Service call"} · {item.minutes / 60} h{item.address ? ` · ${item.address.split(",")[0]}` : ""}
       </p>
-      {item.requested && <p className="mt-0.5 font-medium text-amber-700">Requested {item.requested}</p>}
+      {item.requested && <p className={`mt-0.5 font-medium ${item.visitId ? "text-red-700" : "text-amber-700"}`}>{item.visitId ? `Booked ${item.requested} · needs a tech` : `Requested ${item.requested}`}</p>}
     </li>
   );
 }

@@ -334,8 +334,9 @@ export function sendProblems(p: FullProposal): string[] {
 const STAGE_ORDER = STAGES.map((s) => s.id);
 
 export async function sendProposal(actor: Actor, id: string, opts: { textCustomer: boolean }) {
-  if (!isOwner(actor)) throw new ForbiddenError("Only the owner can send proposals");
+  // Techs send (or present) estimates for their own leads on site; getProposal limits them to those.
   const p = await getProposal(actor, id);
+  if (!isOwner(actor) && opts.textCustomer) throw new ForbiddenError("Only the owner can text a proposal link");
   if (p.status !== "draft") throw new ValidationError("This proposal was already sent.");
   const problems = sendProblems(p);
   if (problems.length) throw new ValidationError(problems.join(" "));

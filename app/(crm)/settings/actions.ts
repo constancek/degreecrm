@@ -41,6 +41,7 @@ export async function saveCompanyAction(_prev: SettingsState, fd: FormData): Pro
       ownerAlertPhone: s(fd, "ownerAlertPhone"),
       acornLink: s(fd, "acornLink"),
       googleReviewUrl: s(fd, "googleReviewUrl"),
+      serviceCallFeeCents: s(fd, "serviceCallFee") ? (parseDollars(s(fd, "serviceCallFee")) ?? undefined) : undefined,
     });
   } catch (err) {
     return fail(err);

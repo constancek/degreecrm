@@ -26,6 +26,7 @@ export function BookingPanel(props: {
     { key: "third", label: "Third choice", date: props.alt2Date, window: props.alt2Window },
   ].filter((c): c is { key: string; label: string; date: string; window: string } => Boolean(c.date && c.window));
   const [choice, setChoice] = useState("first");
+  const [tech, setTech] = useState(props.defaultTechId ?? props.techs[0]?.id ?? "");
   const picked = choices.find((c) => c.key === choice) ?? choices[0]!;
   const date = picked.date;
   const window = picked.window;
@@ -52,7 +53,7 @@ export function BookingPanel(props: {
               ))}
             </div>
           )}
-          <form key={choice} action={confirm} className="mt-3 grid gap-2 text-sm sm:grid-cols-3">
+          <form key={choice} action={confirm} className="mt-3 grid gap-2 text-sm sm:grid-cols-2">
             <select name="date" className="input" defaultValue={date} aria-label="Day">
               {dates.map((d) => (
                 <option key={d.ymd} value={d.ymd}>
@@ -67,18 +68,32 @@ export function BookingPanel(props: {
                 </option>
               ))}
             </select>
-            <select name="techId" className="input" defaultValue={props.defaultTechId ?? props.techs[0]?.id} aria-label="Tech">
+            <select name="techId" className="input" value={tech} onChange={(e) => setTech(e.target.value)} aria-label="Tech">
               {props.techs.map((t) => (
                 <option key={t.id} value={t.id}>
                   {t.name}
                 </option>
               ))}
+              <option value="">Assign a tech later</option>
             </select>
-            <button className="btn-primary sm:col-span-3" disabled={confirming}>
-              {confirming ? "Confirming…" : "Confirm & text customer"}
+            <select name="hours" className="input" defaultValue="1" aria-label="Time on site">
+              {[
+                ["0.5", "30 min on site"],
+                ["1", "1 hour on site"],
+                ["1.5", "1½ hours on site"],
+                ["2", "2 hours on site"],
+                ["3", "3 hours on site"],
+              ].map(([v, l]) => (
+                <option key={v} value={v}>
+                  {l}
+                </option>
+              ))}
+            </select>
+            <button className="btn-primary sm:col-span-2" disabled={confirming}>
+              {confirming ? "Booking…" : tech ? "Confirm & text customer" : "Book without a tech"}
             </button>
-            {confirmState?.error && <p className="text-red-700 sm:col-span-3">{confirmState.error}</p>}
-            {confirmState?.ok && <p className="text-green-700 sm:col-span-3">{confirmState.ok}</p>}
+            {confirmState?.error && <p className="text-red-700 sm:col-span-2">{confirmState.error}</p>}
+            {confirmState?.ok && <p className="text-green-700 sm:col-span-2">{confirmState.ok}</p>}
           </form>
           <details className="mt-3 text-sm">
             <summary className="cursor-pointer text-gray-600">Decline</summary>

@@ -7,8 +7,8 @@ const ORIGIN = "http://localhost:3100";
 test("owner signs in, creates a lead, moves it through the pipeline and adds a note", async ({ page }) => {
   await login(page);
 
-  // Seeded board: 11 columns (Lost hidden), seeded leads in place.
-  await expect(page.locator("section[data-stage]")).toHaveCount(11);
+  // Seeded board: 16 columns (Lost hidden), seeded leads in place.
+  await expect(page.locator("section[data-stage]")).toHaveCount(16);
   await expect(page.locator('section[data-stage="new"]')).toContainText("Sarah Mitchell");
 
   await page.getByRole("link", { name: "New lead" }).first().click();
@@ -26,7 +26,7 @@ test("owner signs in, creates a lead, moves it through the pipeline and adds a n
 
   await page.getByLabel("Move to stage").selectOption("estimate_scheduled");
   await page.getByRole("button", { name: "Update stage" }).click();
-  await expect(page.getByText("moved it from New to Estimate scheduled")).toBeVisible();
+  await expect(page.getByText("moved it from New request to Scheduled")).toBeVisible();
 
   await page.getByLabel("Add a note").fill("Booked Tuesday 9–11am");
   await page.getByRole("button", { name: "Add note" }).click();

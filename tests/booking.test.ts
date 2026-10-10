@@ -83,7 +83,9 @@ describe("booking requests", () => {
 
     const v = await confirmBooking(owner, r.id, { techId: tech.id });
     expect(v.start.toISOString()).toBe(windowTimes(day, "12-15").start.toISOString());
-    expect(v.end.getTime() - v.start.getTime()).toBe(3 * 3_600_000);
+    // The tech's block is 1 hour from the window start; the customer is told the whole window.
+    expect(v.end.getTime() - v.start.getTime()).toBe(3_600_000);
+    expect(v.arrivalEnd!.getTime() - v.arrivalStart!.getTime()).toBe(3 * 3_600_000);
     expect((await db.bookingRequest.findUniqueOrThrow({ where: { id: r.id } })).status).toBe("confirmed");
     expect((await db.lead.findUniqueOrThrow({ where: { id: r.leadId } })).stage).toBe("estimate_scheduled");
     expect(await db.enrollment.count({ where: { visitId: v.id, sequence: { key: "estimate_visit" } } })).toBe(1);

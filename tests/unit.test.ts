@@ -90,8 +90,8 @@ describe("intake mapping", () => {
 });
 
 describe("pipeline + discord", () => {
-  it("has 11 ordered stages plus lost", () => {
-    expect(STAGES).toHaveLength(12);
+  it("has 16 ordered stages plus lost", () => {
+    expect(STAGES).toHaveLength(17);
     expect(STAGES.at(-1)!.id).toBe("lost");
   });
   it("builds a Discord embed with a CRM link and map link", () => {
@@ -105,7 +105,7 @@ describe("pipeline + discord", () => {
       assignedTo: { name: "Mike" },
     });
     const embed = msg.embeds![0]!;
-    expect(embed.title).toBe("Estimate scheduled: No heat");
+    expect(embed.title).toBe("Scheduled: No heat");
     expect(embed.url).toBe("https://app.test/leads/lead1");
     expect(embed.fields!.find((f) => f.name === "Address")!.value).toContain("google.com/maps");
   });

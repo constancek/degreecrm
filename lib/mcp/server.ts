@@ -509,14 +509,15 @@ export function buildMcpServer(actor: StaffActor) {
       {
         title: "Confirm booking",
         description:
-          "Owner only. Confirm a booking request (optionally a different date/window), assigning a tech. Books the estimate visit on the tech's calendar " +
-          "and texts the customer their confirmed arrival window. Confirm with the user before calling.",
-        inputSchema: { bookingId: z.string(), techId: z.string(), date: z.string().optional(), window: windowEnum.optional() },
+          "Owner only. Confirm a booking request (optionally a different date/window). With techId: books the service call on the tech's calendar " +
+          "and texts the customer their arrival window and technician. Without techId: books the time and the lead waits in Needs tech (no text yet). " +
+          "Confirm with the user before calling.",
+        inputSchema: { bookingId: z.string(), techId: z.string().optional(), date: z.string().optional(), window: windowEnum.optional() },
         annotations: { openWorldHint: true },
       },
-      run(actor, "confirm_booking", async ({ bookingId, techId, date, window }: { bookingId: string; techId: string; date?: string; window?: string }) => {
+      run(actor, "confirm_booking", async ({ bookingId, techId, date, window }: { bookingId: string; techId?: string; date?: string; window?: string }) => {
         const v = await confirmBooking(actor, bookingId, { techId, date, window });
-        return { leadId: v.leadId, result: { visitId: v.id, tech: v.tech.name, start: v.start.toISOString(), end: v.end.toISOString() } };
+        return { leadId: v.leadId, result: { visitId: v.id, tech: v.tech?.name ?? null, start: v.start.toISOString(), end: v.end.toISOString() } };
       }),
     );
   }

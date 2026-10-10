@@ -3,20 +3,13 @@
 import { useActionState, useEffect, useRef, useState } from "react";
 import { SOURCES, TRADES } from "@/lib/stages";
 import { AddressFields } from "../leads/new/address-fields";
+import { ArrivalFields, TechField } from "@/components/ops/visit-fields";
 import { createAppointmentAction, lookupLeadsAction, type LeadOption } from "./actions";
 
 export type AppointmentDefaults = { date: string; time: string; techId: string };
 
-const LENGTHS = [
-  [0.5, "30 min"],
-  [1, "1 hour"],
-  [1.5, "1½ hours"],
-  [2, "2 hours"],
-  [3, "3 hours (arrival window)"],
-  [4, "4 hours"],
-  [6, "6 hours"],
-  [8, "Full day (8 hours)"],
-] as const;
+/** A clicked slot at a window's start pre-selects that window; any other time books an exact arrival time. */
+const WINDOW_STARTS: Record<string, string> = { "09:00": "09-12", "12:00": "12-15", "15:00": "15-18" };
 
 function Segmented<T extends string>({ value, options, onChange, label }: { value: T; options: [T, string][]; onChange: (v: T) => void; label: string }) {
   return (
@@ -56,7 +49,7 @@ export function NewAppointmentDialog({
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<LeadOption[]>([]);
   const [lead, setLead] = useState<LeadOption | null>(null);
-  const [hours, setHours] = useState("1");
+  const [tech, setTech] = useState(defaults.techId);
   const search = useRef(0);
 
   useEffect(() => {
@@ -82,7 +75,6 @@ export function NewAppointmentDialog({
 
   const pickKind = (k: "estimate" | "job") => {
     setKind(k);
-    setHours(k === "job" ? "8" : "1");
     if (k === "job") setMode("existing");
     if (k === "job" && lead && !lead.hasJob) setLead(null);
   };
@@ -244,42 +236,15 @@ export function NewAppointmentDialog({
 
           <section className="grid gap-3 sm:grid-cols-2">
             <h3 className="text-sm font-semibold sm:col-span-2">When &amp; who</h3>
-            <div>
-              <label className="label" htmlFor="appt-date">
-                Date
-              </label>
-              <input id="appt-date" name="date" type="date" className="input" defaultValue={defaults.date} required />
-            </div>
-            <div>
-              <label className="label" htmlFor="appt-time">
-                Start time
-              </label>
-              <input id="appt-time" name="time" type="time" step={900} className="input" defaultValue={defaults.time} required />
-            </div>
-            <div>
-              <label className="label" htmlFor="appt-hours">
-                Length
-              </label>
-              <select id="appt-hours" name="hours" className="input" value={hours} onChange={(e) => setHours(e.target.value)}>
-                {LENGTHS.map(([h, l]) => (
-                  <option key={h} value={String(h)}>
-                    {l}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="label" htmlFor="appt-tech">
-                Who&apos;s going
-              </label>
-              <select id="appt-tech" name="techId" className="input" defaultValue={defaults.techId} required>
-                {staff.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name}
-                  </option>
-                ))}
-              </select>
-            </div>
+            <ArrivalFields
+              key={kind}
+              idPrefix="appt"
+              defaultDate={defaults.date}
+              defaultWindow={WINDOW_STARTS[defaults.time] ?? "exact"}
+              defaultTime={defaults.time}
+              defaultHours={kind === "job" ? 8 : 1}
+            />
+            <TechField id="appt-tech" techs={staff} defaultTechId={defaults.techId} allowNone onChange={setTech} />
             <div className="sm:col-span-2">
               <label className="label" htmlFor="appt-notes">
                 Notes for the visit
@@ -289,7 +254,9 @@ export function NewAppointmentDialog({
           </section>
 
           <p className="text-xs text-gray-500">
-            Booking adds the visit to the tech&apos;s Google Calendar and sends the customer the usual appointment confirmation and reminder texts.
+            {tech
+              ? "Booking adds the visit to the tech's Google Calendar and texts the customer the arrival window and technician (plus a reminder)."
+              : "No text yet: the appointment waits in Needs tech. The customer gets the confirmation once you assign a technician."}
           </p>
 
           <div className="flex justify-end gap-2">
@@ -297,7 +264,7 @@ export function NewAppointmentDialog({
               Cancel
             </button>
             <button type="submit" className="btn-primary" disabled={pending || (mode === "existing" && !lead)}>
-              {pending ? "Booking…" : "Book appointment"}
+              {pending ? "Booking…" : tech ? "Book & text customer" : "Book without a tech"}
             </button>
           </div>
         </form>

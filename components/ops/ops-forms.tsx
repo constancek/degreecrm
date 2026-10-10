@@ -1,17 +1,18 @@
 "use client";
 
 import { useActionState, useState, useTransition } from "react";
+import { ArrivalFields, ReasonSelect, TechField } from "./visit-fields";
 import {
   cancelVisitAction,
+  needsRescheduleAction,
+  rescheduleVisitAction,
   recordDepositAction,
   recordFinalPaymentAction,
   scheduleVisitAction,
   sendTextAction,
   stopEnrollmentAction,
-  visitStatusAction,
   type Result,
 } from "@/app/(crm)/ops-actions";
-import type { VisitStatus } from "@/generated/prisma/enums";
 
 function Status({ state }: { state: Result | undefined }) {
   if (state?.error) return <p className="text-sm text-red-700">{state.error}</p>;
@@ -32,50 +33,23 @@ export function ScheduleVisitForm(props: {
   defaultHours: number;
 }) {
   const [state, action, pending] = useActionState(scheduleVisitAction, undefined);
+  const [tech, setTech] = useState(props.defaultTechId ?? props.techs[0]?.id ?? "");
   return (
-    <form action={action} className="grid gap-2 text-sm sm:grid-cols-6">
+    <form action={action} className="grid gap-2 text-sm sm:grid-cols-2">
       <input type="hidden" name="leadId" value={props.leadId} />
       <input type="hidden" name="kind" value={props.kind} />
       {props.jobId && <input type="hidden" name="jobId" value={props.jobId} />}
+      <ArrivalFields idPrefix={`sched-${props.kind}`} defaultDate={todayEastern()} defaultHours={props.defaultHours} />
+      <TechField id={`tech-${props.kind}`} techs={props.techs} defaultTechId={props.defaultTechId} allowNone onChange={setTech} />
       <div className="sm:col-span-2">
-        <label className="label" htmlFor={`date-${props.kind}`}>
-          Date
-        </label>
-        <input id={`date-${props.kind}`} name="date" type="date" className="input" defaultValue={todayEastern()} required />
-      </div>
-      <div className="sm:col-span-2">
-        <label className="label" htmlFor={`time-${props.kind}`}>
-          Start
-        </label>
-        <input id={`time-${props.kind}`} name="time" type="time" className="input" defaultValue="09:00" step={900} required />
-      </div>
-      <div className="sm:col-span-2">
-        <label className="label" htmlFor={`hours-${props.kind}`}>
-          Hours
-        </label>
-        <input id={`hours-${props.kind}`} name="hours" type="number" min={0.5} max={12} step={0.5} className="input" defaultValue={props.defaultHours} />
-      </div>
-      <div className="sm:col-span-3">
-        <label className="label" htmlFor={`tech-${props.kind}`}>
-          Tech
-        </label>
-        <select id={`tech-${props.kind}`} name="techId" className="input" defaultValue={props.defaultTechId ?? props.techs[0]?.id} required>
-          {props.techs.map((t) => (
-            <option key={t.id} value={t.id}>
-              {t.name}
-            </option>
-          ))}
-        </select>
-      </div>
-      <div className="sm:col-span-3">
         <label className="label" htmlFor={`notes-${props.kind}`}>
           Notes for the tech
         </label>
         <input id={`notes-${props.kind}`} name="notes" className="input" />
       </div>
-      <div className="flex items-center gap-3 sm:col-span-6">
+      <div className="flex flex-wrap items-center gap-3 sm:col-span-2">
         <button className="btn-primary" disabled={pending}>
-          {pending ? "Scheduling…" : props.kind === "estimate" ? "Book estimate visit" : "Schedule job visit"}
+          {pending ? "Booking…" : !tech ? "Book without a tech" : props.kind === "estimate" ? "Book service call & text customer" : "Schedule job visit & text customer"}
         </button>
         <Status state={state} />
       </div>
@@ -88,46 +62,140 @@ export type VisitRow = {
   kind: string;
   when: string;
   techName: string;
+  techId: string | null;
   status: string;
   syncState: string;
   syncError: string | null;
+  arrival: string | null;
+  lateEta: string | null;
+  outcome: string | null;
+  fee: string | null;
+  date: string;
+  hours: number;
 };
 
-export function VisitList({ visits, canEdit }: { visits: VisitRow[]; canEdit: boolean }) {
+/** Visits on the lead / job page; the owner can assign, reschedule, flag for reschedule or cancel upcoming ones. */
+export function VisitList({ visits, canEdit, techs = [], canText = false }: { visits: VisitRow[]; canEdit: boolean; techs?: { id: string; name: string }[]; canText?: boolean }) {
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  const [open, setOpen] = useState<{ id: string; what: "reschedule" | "flag" } | null>(null);
   if (!visits.length) return <p className="text-sm text-gray-500">No visits yet.</p>;
   return (
     <ul className="divide-y text-sm" aria-label="Visits">
-      {visits.map((v) => (
-        <li key={v.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2">
-          <span className="font-medium">{v.when}</span>
-          <span className="capitalize text-gray-600">{v.kind}</span>
-          <span>{v.techName}</span>
-          <span className="rounded bg-gray-100 px-1.5 text-xs capitalize">{v.status.replace("_", " ")}</span>
-          <span className={`text-xs ${v.syncState === "error" ? "text-red-700" : "text-gray-400"}`} title={v.syncError ?? ""}>
-            {v.syncState === "synced" ? "In Google Calendar" : v.syncState === "skipped" ? "Calendar not connected" : v.syncState === "error" ? "Calendar sync failed" : "Syncing…"}
-          </span>
-          {canEdit && !["done", "cancelled"].includes(v.status) && (
-            <button
-              className="ml-auto text-red-700 underline"
-              disabled={pending}
-              onClick={() => {
-                const reason = window.prompt("Cancel this visit? Optional reason:");
-                if (reason === null) return;
-                start(async () => {
-                  const r = await cancelVisitAction(v.id, reason || undefined);
-                  if (r.error) setError(r.error);
-                });
-              }}
-            >
-              Cancel
-            </button>
-          )}
-        </li>
-      ))}
+      {visits.map((v) => {
+        const upcoming = ["scheduled", "en_route"].includes(v.status);
+        return (
+          <li key={v.id} className="py-2">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+              <span className="font-medium">{v.arrival ?? v.when}</span>
+              <span className="text-gray-600">{v.kind === "estimate" ? "Service call" : "Job"}</span>
+              <span className={v.techId ? "" : "font-medium text-red-700"}>{v.techName}</span>
+              <span className="rounded bg-gray-100 px-1.5 text-xs capitalize">{v.status.replace("_", " ")}</span>
+              {v.lateEta && upcoming && <span className="rounded bg-amber-100 px-1.5 text-xs text-amber-800">Late · ~{v.lateEta}</span>}
+              {v.outcome && <span className="rounded bg-gray-100 px-1.5 text-xs">{v.outcome}</span>}
+              {v.fee && <span className="rounded bg-gray-100 px-1.5 text-xs">{v.fee}</span>}
+              {v.techId && (
+                <span className={`text-xs ${v.syncState === "error" ? "text-red-700" : "text-gray-400"}`} title={v.syncError ?? ""}>
+                  {v.syncState === "synced" ? "In Google Calendar" : v.syncState === "skipped" ? "Calendar not connected" : v.syncState === "error" ? "Calendar sync failed" : "Syncing…"}
+                </span>
+              )}
+              {canEdit && upcoming && (
+                <span className="ml-auto flex flex-wrap gap-3">
+                  <button className="text-brand underline" onClick={() => setOpen(open?.id === v.id && open.what === "reschedule" ? null : { id: v.id, what: "reschedule" })}>
+                    {v.techId ? "Reschedule" : "Assign tech"}
+                  </button>
+                  <button className="text-amber-800 underline" onClick={() => setOpen(open?.id === v.id && open.what === "flag" ? null : { id: v.id, what: "flag" })}>
+                    Needs reschedule
+                  </button>
+                  <button
+                    className="text-red-700 underline"
+                    disabled={pending}
+                    onClick={() => {
+                      const reason = window.prompt("Cancel this visit for good? Optional reason:");
+                      if (reason === null) return;
+                      start(async () => {
+                        const r = await cancelVisitAction(v.id, reason || undefined);
+                        if (r.error) setError(r.error);
+                      });
+                    }}
+                  >
+                    Cancel
+                  </button>
+                </span>
+              )}
+            </div>
+            {open?.id === v.id && open.what === "reschedule" && <RescheduleForm visit={v} techs={techs} canText={canText} onDone={() => setOpen(null)} />}
+            {open?.id === v.id && open.what === "flag" && <FlagRescheduleForm visitId={v.id} canText={canText} onDone={() => setOpen(null)} />}
+          </li>
+        );
+      })}
       {error && <li className="py-2 text-red-700">{error}</li>}
     </ul>
+  );
+}
+
+function RescheduleForm({ visit, techs, canText, onDone }: { visit: VisitRow; techs: { id: string; name: string }[]; canText: boolean; onDone: () => void }) {
+  const [state, action, pending] = useActionState(rescheduleVisitAction.bind(null, visit.id), undefined);
+  return (
+    <form action={action} className="mt-2 grid gap-2 rounded-md border bg-gray-50 p-3 sm:grid-cols-2">
+      <ArrivalFields idPrefix={`re-${visit.id}`} defaultDate={visit.date} defaultHours={visit.hours} />
+      <TechField id={`re-tech-${visit.id}`} techs={techs} defaultTechId={visit.techId} />
+      {canText && (
+        <label className="flex items-center gap-2 sm:col-span-2">
+          <input type="checkbox" name="notify" defaultChecked /> {visit.techId ? "Text the customer the change" : "Text the customer their confirmation"}
+        </label>
+      )}
+      <div className="flex items-center gap-3 sm:col-span-2">
+        <button className="btn-primary" disabled={pending}>
+          {pending ? "Saving…" : "Save"}
+        </button>
+        <button type="button" className="btn-secondary" onClick={onDone}>
+          Close
+        </button>
+        <Status state={state} />
+      </div>
+    </form>
+  );
+}
+
+function FlagRescheduleForm({ visitId, canText, onDone }: { visitId: string; canText: boolean; onDone: () => void }) {
+  const [reason, setReason] = useState("customer_request");
+  const [note, setNote] = useState("");
+  const [notify, setNotify] = useState(false);
+  const [pending, start] = useTransition();
+  const [state, setState] = useState<Result | undefined>();
+  return (
+    <div className="mt-2 space-y-2 rounded-md border bg-amber-50 p-3">
+      <ReasonSelect
+        value={reason}
+        onChange={(r) => {
+          setReason(r);
+          setNotify(canText && r !== "customer_request");
+        }}
+      />
+      <input className="input" aria-label="Note" placeholder="Note (optional)" value={note} onChange={(e) => setNote(e.target.value)} />
+      {canText && (
+        <label className="flex items-center gap-2">
+          <input type="checkbox" checked={notify} onChange={(e) => setNotify(e.target.checked)} /> Text the customer we need to reschedule
+        </label>
+      )}
+      <div className="flex items-center gap-3">
+        <button
+          className="btn-primary"
+          disabled={pending}
+          onClick={() =>
+            start(async () => {
+              const r = await needsRescheduleAction(visitId, { reason, note, notifyCustomer: notify });
+              setState(r);
+              if (!r.error) onDone();
+            })
+          }
+        >
+          Cancel visit · needs reschedule
+        </button>
+        <Status state={state} />
+      </div>
+    </div>
   );
 }
 
@@ -238,39 +306,5 @@ export function EnrollmentList({ leadId, rows }: { leadId: string; rows: { id: s
         </li>
       ))}
     </ul>
-  );
-}
-
-export function VisitStatusButtons({ visitId, status, canText }: { visitId: string; status: string; canText: boolean }) {
-  const [pending, start] = useTransition();
-  const [notify, setNotify] = useState(canText);
-  const [error, setError] = useState<string | null>(null);
-  const go = (s: VisitStatus) =>
-    start(async () => {
-      const r = await visitStatusAction(visitId, s, notify);
-      if (r.error) setError(r.error);
-    });
-  if (status === "done") return <p className="text-sm font-medium text-green-700">Done ✓</p>;
-  if (status === "cancelled") return <p className="text-sm text-gray-500">Cancelled</p>;
-  return (
-    <div className="space-y-2">
-      <div className="grid grid-cols-3 gap-2">
-        <button className="btn-secondary py-3" disabled={pending || status !== "scheduled"} onClick={() => go("en_route")}>
-          On my way
-        </button>
-        <button className="btn-secondary py-3" disabled={pending || status === "in_progress"} onClick={() => go("in_progress")}>
-          Start
-        </button>
-        <button className="btn-primary py-3" disabled={pending} onClick={() => go("done")}>
-          Complete
-        </button>
-      </div>
-      {canText && status === "scheduled" && (
-        <label className="flex items-center gap-2 text-xs text-gray-600">
-          <input type="checkbox" checked={notify} onChange={(e) => setNotify(e.target.checked)} /> Text the customer when I tap &ldquo;On my way&rdquo;
-        </label>
-      )}
-      {error && <p className="text-sm text-red-700">{error}</p>}
-    </div>
   );
 }

@@ -11,6 +11,9 @@ import { listVisits } from "./visits";
 
 export type CalendarUser = { id: string; name: string; connected: boolean; calendarEmail: string | null };
 
+/** Pseudo-person for visits booked without a tech (owner only). */
+export const UNASSIGNED = "unassigned";
+
 export type CalendarItem =
   | {
       type: "visit";
@@ -57,16 +60,17 @@ export async function calendarItems(
 ): Promise<{ items: CalendarItem[]; failed: string[] }> {
   const me = (actor as { id: string }).id;
   const allowed = new Set((await calendarUsers(actor)).map((u) => u.id));
+  if (isOwner(actor)) allowed.add(UNASSIGNED);
   const userIds = opts.userIds.filter((id) => allowed.has(id));
   if (userIds.length === 0) return { items: [], failed: [] };
 
-  const visits = (await listVisits(actor, { from: opts.from, to: opts.to })).filter((v) => userIds.includes(v.techId));
+  const visits = (await listVisits(actor, { from: opts.from, to: opts.to })).filter((v) => userIds.includes(v.techId ?? UNASSIGNED));
   const items: CalendarItem[] = visits.map((v) => ({
     type: "visit",
     id: v.id,
     kind: v.kind,
     status: v.status,
-    userId: v.techId,
+    userId: v.techId ?? UNASSIGNED,
     start: v.start.getTime(),
     end: v.end.getTime(),
     title: v.job?.title ?? v.lead.title,
@@ -77,7 +81,7 @@ export async function calendarItems(
 
   const failed: string[] = [];
   if (opts.google) {
-    const users = await db.user.findMany({ where: { id: { in: userIds }, googleRefreshToken: { not: null } } });
+    const users = await db.user.findMany({ where: { id: { in: userIds.filter((id) => id !== UNASSIGNED) }, googleRefreshToken: { not: null } } });
     const cal = getCalendarClient();
     await Promise.all(
       users.map(async (u) => {

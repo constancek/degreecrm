@@ -18,7 +18,7 @@ const ymd = (d: Date) => new Intl.DateTimeFormat("en-CA", { timeZone: "America/N
 
 test.describe.configure({ mode: "serial" });
 
-test("pipeline: dragging a card to Follow up runs the stage automation (drip starts)", async ({ page, request }) => {
+test("pipeline: dragging a card to Needs scheduling runs the stage automation (drip starts)", async ({ page, request }) => {
   // A fresh lead with a phone number, so texts can be enrolled.
   await request.post("/api/intake/web", {
     headers: { origin: "https://cincydegreeofcomfort.com" },
@@ -33,7 +33,7 @@ test("pipeline: dragging a card to Follow up runs the stage automation (drip sta
   await page.waitForTimeout(600); // clicks right after a drop are ignored (they'd be the drop itself)
 
   await target.getByRole("link", { name: "Drag Pipeline" }).click();
-  await expect(page.getByRole("list", { name: "Activity timeline" })).toContainText("moved it from New to Follow up");
+  await expect(page.getByRole("list", { name: "Activity timeline" })).toContainText("moved it from New request to Needs scheduling");
   await expect(page.getByRole("list", { name: "Automatic texts" })).toContainText("Book an estimate");
 });
 
@@ -74,5 +74,5 @@ test("dispatch: dragging an estimate request onto a tech books it; dragging the 
   await expect(page.getByRole("list", { name: "Visits" })).toContainText("Dana Cole");
   await expect(page.getByRole("list", { name: "Activity timeline" })).toContainText("rescheduled a visit");
   // Confirmation + 24 h reminder are queued; the every-minute scheduler sends them (9 am–8 pm, Mon–Sat).
-  await expect(page.getByRole("list", { name: "Automatic texts" })).toContainText(/Estimate booked\s*step 1 of 2/);
+  await expect(page.getByRole("list", { name: "Automatic texts" })).toContainText(/Service call booked\s*step 1 of 2/);
 });

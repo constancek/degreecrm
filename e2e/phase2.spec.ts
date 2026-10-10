@@ -118,7 +118,9 @@ test("a tech drafts a proposal from Claude over MCP; only the owner can send", a
   expect(updated.options[2].title).toBe("Premium swap");
 
   await page.goto(`/proposals/${draft.proposalId}`);
-  await expect(page.getByText("The owner reviews and sends proposals")).toBeVisible();
+  // Techs can't text the link, but can present the estimate on site.
+  await expect(page.getByRole("heading", { name: "Go over it with the customer" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Present to customer" })).toBeVisible();
   await page.goto(`/leads/${lead.id}`);
   await expect(page.getByRole("list", { name: "Activity timeline" })).toContainText("drafted a proposal");
 });

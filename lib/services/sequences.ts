@@ -8,17 +8,18 @@ import { SYSTEM, ValidationError, isOwner, ForbiddenError, type Actor } from "./
 import { getCompany } from "./company";
 import { hasReceivedAutomatedText, sendCustomerText } from "./messages";
 import { proposalLink } from "./proposals";
-import { windowForTimes } from "@/lib/booking";
+import { arrivalOf, arrivalPhrase, windowForTimes } from "@/lib/booking";
 
 export const TRIGGERS = [
-  { id: "follow_up", label: "Lead moves to Follow up" },
+  { id: "follow_up", label: "Lead moves to Needs scheduling" },
   { id: "estimate_sent", label: "Proposal sent" },
-  { id: "estimate_visit", label: "Estimate visit booked" },
+  { id: "estimate_declined", label: "Customer declines the estimate" },
+  { id: "estimate_visit", label: "Service call booked (with a tech)" },
   { id: "job_visit", label: "Job visit booked" },
   { id: "maintenance", label: "HVAC job paid (maintenance)" },
 ] as const;
 
-const STAGE_TRIGGERS = ["follow_up", "estimate_sent"];
+const STAGE_TRIGGERS = ["follow_up", "estimate_sent", "estimate_declined"];
 const MAX_FAILURES = 3;
 const TZ = "America/New_York";
 
@@ -46,12 +47,26 @@ export const DEFAULT_SEQUENCES: { key: string; name: string; trigger: string; st
     ],
   },
   {
+    key: "estimate_declined",
+    name: "Declined estimate",
+    trigger: "estimate_declined",
+    steps: [
+      { offsetHours: 72, template: "Hi {firstName}, thanks again for having {companyName} out. If you'd like to go ahead with your {jobTitle}, your estimate is right here: {proposalLink}" },
+      { offsetHours: 336, template: "Hi {firstName}, just checking in on your {jobTitle}. Your pricing holds until {expiry}: {proposalLink}" },
+      { offsetHours: 720, template: "Hi {firstName}, we're here whenever you're ready. Just reply to this text." },
+    ],
+  },
+  {
     key: "estimate_visit",
-    name: "Estimate booked",
+    name: "Service call booked",
     trigger: "estimate_visit",
     steps: [
-      { anchor: "enrolled", offsetHours: 0, template: "Hi {firstName}, you're confirmed! {companyName} will arrive {visitTime} for your estimate. {techName} will text when on the way." },
-      { anchor: "visit_start", offsetHours: -24, template: "Reminder: {techName} from {companyName} arrives {visitTime}. Reply here if you need to reschedule." },
+      {
+        anchor: "enrolled",
+        offsetHours: 0,
+        template: "Hi {firstName}, this is {companyName}. Your service call at {address} is confirmed for {visitDay}. {techFullName} will arrive {arrivalWindow}. We'll text you when {techName} is on the way. Reply here if you need to reschedule.",
+      },
+      { anchor: "visit_start", offsetHours: -24, template: "Reminder: {techFullName} from {companyName} will arrive {visitDay}, {arrivalWindow}, for your service call. Reply here if you need to reschedule." },
     ],
   },
   {
@@ -59,8 +74,8 @@ export const DEFAULT_SEQUENCES: { key: string; name: string; trigger: string; st
     name: "Job scheduled",
     trigger: "job_visit",
     steps: [
-      { anchor: "enrolled", offsetHours: 0, template: "Hi {firstName}, your {jobTitle} is scheduled for {visitTime}. Thank you for choosing {companyName}!" },
-      { anchor: "visit_start", offsetHours: -48, template: "Reminder: we'll see you {visitTime} for your {jobTitle}. Reply here with any questions." },
+      { anchor: "enrolled", offsetHours: 0, template: "Hi {firstName}, your {jobTitle} is scheduled for {visitDay}. {techFullName} will arrive {arrivalWindow}. Thank you for choosing {companyName}!" },
+      { anchor: "visit_start", offsetHours: -48, template: "Reminder: {techFullName} will arrive {visitDay}, {arrivalWindow}, for your {jobTitle}. Reply here with any questions." },
     ],
   },
   {
@@ -138,7 +153,7 @@ function nextStep(
 
 // ---- Enroll / stop --------------------------------------------------------------
 
-export async function enroll(trigger: string, leadId: string, opts: { visitId?: string; now?: Date } = {}) {
+export async function enroll(trigger: string, leadId: string, opts: { visitId?: string; now?: Date; skipImmediate?: boolean } = {}) {
   const now = opts.now ?? new Date();
   const lead = await db.lead.findUnique({ where: { id: leadId }, include: { customer: true } });
   if (!lead || !lead.customer.phone || lead.customer.smsOptOut) return 0;
@@ -150,7 +165,10 @@ export async function enroll(trigger: string, leadId: string, opts: { visitId?: 
       where: { sequenceId: seq.id, leadId, status: "active", ...(opts.visitId ? { visitId: opts.visitId } : {}) },
     });
     if (active) continue;
-    const first = nextStep(seq.steps, 0, now, visit, now);
+    // skipImmediate: a one-off text already went out (e.g. "moved to…"), so keep only the later steps.
+    const startAt = opts.skipImmediate ? seq.steps.findIndex((st) => !(st.anchor === "enrolled" && st.offsetHours === 0)) : 0;
+    if (startAt < 0) continue;
+    const first = nextStep(seq.steps, startAt, now, visit, now);
     if (!first) continue;
     await db.enrollment.create({
       data: {
@@ -227,6 +245,7 @@ export async function recordDeliveryFailure(enrollmentId: string) {
 const DATE_TIME = new Intl.DateTimeFormat("en-US", { timeZone: TZ, weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 const DATE = new Intl.DateTimeFormat("en-US", { timeZone: TZ, month: "long", day: "numeric" });
 const DAY = new Intl.DateTimeFormat("en-US", { timeZone: TZ, weekday: "short", month: "short", day: "numeric" });
+const DAY_LONG = new Intl.DateTimeFormat("en-US", { timeZone: TZ, weekday: "long", month: "short", day: "numeric" });
 const HOUR_FMT = new Intl.DateTimeFormat("en-US", { timeZone: TZ, hour: "numeric", minute: "2-digit" });
 
 /** "Tue, Oct 14 between 9 AM and 12 PM" for arrival windows, "Tue, Oct 14, 9:30 AM" otherwise. */
@@ -253,7 +272,8 @@ async function varsFor(leadId: string, visitId: string | null) {
     }),
     getCompany(),
   ]);
-  const visit = visitId ? await db.visit.findUnique({ where: { id: visitId }, include: { tech: true } }) : null;
+  const visit = visitId ? await db.visit.findUnique({ where: { id: visitId }, include: { tech: true, lead: { include: { property: true } } } }) : null;
+  const arrival = visit ? arrivalOf(visit) : null;
   const proposal = lead.proposals[0];
   return {
     firstName: lead.customer.name.split(/\s+/)[0] ?? "",
@@ -262,8 +282,12 @@ async function varsFor(leadId: string, visitId: string | null) {
     companyPhone: formatPhone(company.phone) || company.name,
     proposalLink: proposal?.token ? proposalLink(proposal.token) : "",
     expiry: proposal?.expiresAt ? DATE.format(proposal.expiresAt) : "",
-    techName: visit?.tech.name.split(/\s+/)[0] ?? "our technician",
+    techName: visit?.tech?.name.split(/\s+/)[0] ?? "our technician",
+    techFullName: visit?.tech?.name ?? "Our technician",
     visitTime: visit ? visitWhen(visit.start, visit.end) : "",
+    visitDay: arrival ? DAY_LONG.format(arrival.start) : "",
+    arrivalWindow: arrival ? arrivalPhrase(arrival) : "",
+    address: visit?.lead.property ? [visit.lead.property.street + (visit.lead.property.unit ? ` ${visit.lead.property.unit}` : ""), visit.lead.property.city].filter(Boolean).join(", ") : "your home",
     reviewLink: company.googleReviewUrl,
   };
 }
@@ -386,4 +410,5 @@ export async function leadEnrollments(leadId: string) {
   });
 }
 
-export const SEQUENCE_PLACEHOLDERS = "{firstName} {jobTitle} {companyName} {companyPhone} {proposalLink} {expiry} {techName} {visitTime} {reviewLink}";
+export const SEQUENCE_PLACEHOLDERS =
+  "{firstName} {jobTitle} {companyName} {companyPhone} {address} {visitDay} {arrivalWindow} {techName} (first name) {techFullName} {visitTime} {proposalLink} {expiry} {reviewLink}";

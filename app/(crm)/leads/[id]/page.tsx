@@ -1,3 +1,4 @@
+import { visitRow } from "@/lib/visit-row";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -161,15 +162,9 @@ export default async function LeadPage({ params }: PageProps<"/leads/[id]">) {
           <div className="mt-2">
             <VisitList
               canEdit={user.role === "owner"}
-              visits={visits.map((v) => ({
-                id: v.id,
-                kind: v.kind,
-                when: formatDateTime(v.start),
-                techName: v.tech.name,
-                status: v.status,
-                syncState: v.syncState,
-                syncError: v.syncError,
-              }))}
+              visits={visits.map(visitRow)}
+              techs={staff.map((s) => ({ id: s.id, name: s.name }))}
+              canText={Boolean(lead.customer.phone) && !lead.customer.smsOptOut}
             />
           </div>
           {user.role === "owner" && (

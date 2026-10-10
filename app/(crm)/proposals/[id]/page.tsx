@@ -158,7 +158,19 @@ export default async function ProposalPage({ params }: PageProps<"/proposals/[id
           />
         )}
         {editable && user.role !== "owner" && (
-          <p className="card p-4 text-sm text-gray-600">The owner reviews and sends proposals. Your draft is saved on the lead.</p>
+          <section className="card space-y-2 p-4 text-sm">
+            <h2 className="font-semibold">Go over it with the customer</h2>
+            {sendProblems(p).length > 0 ? (
+              <p className="text-amber-800">Before presenting: {sendProblems(p).join(" ")}</p>
+            ) : (
+              <a href={`/proposals/${p.id}/present`} target="_blank" rel="noreferrer" className="btn-primary w-full">
+                Present to customer
+              </a>
+            )}
+            <p className="text-xs text-gray-500">
+              Presenting locks this version so the customer can sign on this device. To text the link instead, ask the owner.
+            </p>
+          </section>
         )}
 
         {p.token && (

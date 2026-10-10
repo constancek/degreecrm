@@ -5,7 +5,19 @@ import { z } from "zod";
 import { requireUser } from "@/lib/session";
 import { parseDollars } from "@/lib/money";
 import { ForbiddenError, NotFoundError, ValidationError } from "@/lib/services/actor";
-import { cancelVisit, disconnectCalendar, rescheduleVisit, scheduleVisit, updateVisitStatus } from "@/lib/services/visits";
+import {
+  RESCHEDULE_REASONS,
+  cancelVisit,
+  disconnectCalendar,
+  needsReschedule,
+  rescheduleVisit,
+  runningLate,
+  scheduleVisit,
+  updateVisitStatus,
+  wrapUpVisit,
+  type RescheduleReason,
+  type WrapUp,
+} from "@/lib/services/visits";
 import { recordManualDeposit } from "@/lib/services/payments";
 import { createFinalInvoice, recordFinalPayment, updateJob } from "@/lib/services/jobs";
 import { sendCustomerText } from "@/lib/services/messages";
@@ -30,40 +42,39 @@ function refresh(...paths: string[]) {
   revalidatePath("/my-day");
 }
 
-/** "2026-10-14" + "09:30" in Eastern time → Date. */
-function easternDateTime(date: string, time: string): Date {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !/^\d{2}:\d{2}$/.test(time)) throw new ValidationError("Pick a date and time");
-  const probe = new Date(`${date}T12:00:00Z`);
-  const offset = new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", timeZoneName: "shortOffset" })
-    .formatToParts(probe)
-    .find((p) => p.type === "timeZoneName")!
-    .value.replace("GMT", "");
-  const sign = offset.startsWith("-") ? "-" : "+";
-  const hours = String(Math.abs(Number(offset || 0))).padStart(2, "0");
-  return new Date(`${date}T${time}:00${sign}${hours}:00`);
-}
-
 export async function scheduleVisitAction(_prev: Result | undefined, fd: FormData): Promise<Result> {
   const user = await requireUser();
   const s = (k: string) => String(fd.get(k) ?? "");
   try {
-    const start = easternDateTime(s("date"), s("time"));
-    const hours = Number(s("hours") || "1");
-    if (!(hours > 0 && hours <= 12)) throw new ValidationError("Length must be between 0.5 and 12 hours");
+    const { bookingTimes } = await import("@/lib/services/booking");
     await scheduleVisit(user, {
       leadId: s("leadId"),
       jobId: s("jobId") || null,
       kind: s("kind") === "job" ? "job" : "estimate",
-      techId: s("techId"),
-      start,
-      end: new Date(start.getTime() + hours * 3_600_000),
+      techId: s("techId") || null,
+      ...bookingTimes({ date: s("date"), window: s("window"), time: s("time"), hours: Number(s("hours") || "1") }),
       notes: s("notes") || undefined,
     });
   } catch (err) {
     return fail(err);
   }
-  refresh(`/leads/${s("leadId")}`, s("jobId") ? `/jobs/${s("jobId")}` : "/jobs");
-  return { ok: "Scheduled" };
+  refresh(`/leads/${s("leadId")}`, s("jobId") ? `/jobs/${s("jobId")}` : "/jobs", "/pipeline", "/calendar");
+  return { ok: s("techId") ? "Booked. The customer gets the confirmation text." : "Booked without a tech (Needs tech)." };
+}
+
+/** Lead page "Reschedule": new day/window and/or tech; texts the customer unless unchecked. */
+export async function rescheduleVisitAction(visitId: string, _prev: Result | undefined, fd: FormData): Promise<Result> {
+  const user = await requireUser();
+  const s = (k: string) => String(fd.get(k) ?? "");
+  try {
+    const { bookingTimes } = await import("@/lib/services/booking");
+    const t = bookingTimes({ date: s("date"), window: s("window"), time: s("time"), hours: Number(s("hours") || "1") });
+    await rescheduleVisit(user, visitId, { ...t, techId: s("techId") || undefined }, { notifyCustomer: fd.get("notify") === "on" });
+  } catch (err) {
+    return fail(err);
+  }
+  refresh("/pipeline", "/calendar");
+  return { ok: "Updated" };
 }
 
 /** Dispatch board drag & drop and slot-finder clicks. */
@@ -75,13 +86,14 @@ export async function placeOnBoardAction(input: {
   techId: string;
   start: string;
   durationMinutes: number;
+  notifyCustomer?: boolean;
 }): Promise<Result> {
   const user = await requireUser();
   try {
     const start = new Date(input.start);
     const end = new Date(start.getTime() + input.durationMinutes * 60_000);
     if (input.visitId) {
-      await rescheduleVisit(user, input.visitId, { start, end, techId: input.techId });
+      await rescheduleVisit(user, input.visitId, { start, end, techId: input.techId }, { notifyCustomer: input.notifyCustomer ?? false });
     } else if (input.leadId) {
       await scheduleVisit(user, { leadId: input.leadId, jobId: input.jobId ?? null, kind: input.kind ?? "estimate", techId: input.techId, start, end });
     }
@@ -90,6 +102,51 @@ export async function placeOnBoardAction(input: {
   }
   refresh("/dispatch");
   return { ok: "Saved" };
+}
+
+/** Tech: "Running late" — texts the customer the new approximate arrival time. */
+export async function runningLateAction(visitId: string, minutes: number): Promise<Result> {
+  const user = await requireUser();
+  try {
+    await runningLate(user, visitId, minutes);
+  } catch (err) {
+    return fail(err);
+  }
+  refresh("/pipeline", "/calendar");
+  return { ok: "Customer texted the new arrival time" };
+}
+
+/** Tech or owner: the visit can't happen as booked → cancelled, lead to Needs reschedule. */
+export async function needsRescheduleAction(visitId: string, input: { reason: string; note?: string; notifyCustomer: boolean }): Promise<Result> {
+  const user = await requireUser();
+  try {
+    if (!(input.reason in RESCHEDULE_REASONS)) throw new ValidationError("Pick a reason");
+    await needsReschedule(user, visitId, { reason: input.reason as RescheduleReason, note: input.note, notifyCustomer: input.notifyCustomer });
+  } catch (err) {
+    return fail(err);
+  }
+  refresh("/pipeline", "/calendar");
+  return { ok: "Moved to Needs reschedule" };
+}
+
+/** Tech wraps up the first visit: work now, return visit, declined, or estimate to follow. */
+export async function wrapUpVisitAction(visitId: string, input: WrapUp & { feeDollars?: string }): Promise<Result & { jobId?: string }> {
+  const user = await requireUser();
+  try {
+    const payload: WrapUp =
+      input.outcome === "declined"
+        ? {
+            ...input,
+            feeCents: input.fee === "none" ? undefined : parseDollars(input.feeDollars ?? "") ?? undefined,
+          }
+        : input;
+    if (payload.outcome === "declined" && payload.fee !== "none" && !payload.feeCents) throw new ValidationError("Enter the service call fee");
+    const res = await wrapUpVisit(user, visitId, payload);
+    refresh("/pipeline", "/calendar", "/jobs");
+    return { ok: "Saved", jobId: "jobId" in res ? res.jobId : undefined };
+  } catch (err) {
+    return fail(err);
+  }
 }
 
 export async function cancelVisitAction(visitId: string, reason?: string): Promise<Result> {
@@ -256,12 +313,13 @@ export async function confirmBookingAction(bookingId: string, leadId: string, _p
   const user = await requireUser();
   try {
     const { confirmBooking } = await import("@/lib/services/booking");
-    await confirmBooking(user, bookingId, { techId: String(fd.get("techId")), date: String(fd.get("date")), window: String(fd.get("window")) });
+    const techId = String(fd.get("techId") ?? "") || null;
+    await confirmBooking(user, bookingId, { techId, date: String(fd.get("date")), window: String(fd.get("window")), hours: Number(fd.get("hours") || 1) });
+    refresh(`/leads/${leadId}`, "/pipeline", "/calendar");
+    return { ok: techId ? "Booked. The customer gets a confirmation text." : "Booked without a tech (Needs tech). The customer is texted once you assign one." };
   } catch (err) {
     return fail(err);
   }
-  refresh(`/leads/${leadId}`, "/pipeline");
-  return { ok: "Confirmed. The customer gets a confirmation text." };
 }
 
 export async function declineBookingAction(bookingId: string, leadId: string, _prev: Result | undefined, fd: FormData): Promise<Result> {

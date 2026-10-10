@@ -9,7 +9,7 @@ import { formatAddress } from "@/lib/notifications/discord-embeds";
 import { ForbiddenError, NotFoundError, ValidationError, isOwner } from "@/lib/services/actor";
 import { createLead, searchLeads } from "@/lib/services/leads";
 import { scheduleVisit } from "@/lib/services/visits";
-import { easternMidnight } from "@/lib/services/dispatch";
+import { bookingTimes } from "@/lib/services/booking";
 
 export type LeadOption = { id: string; customer: string; title: string; address: string; phone: string; hasJob: boolean };
 export type AppointmentResult = { error?: string; ok?: string; leadId?: string };
@@ -32,13 +32,6 @@ export async function lookupLeadsAction(query: string): Promise<LeadOption[]> {
   }));
 }
 
-/** "2026-10-14" + "09:30" (Eastern) → Date. */
-function easternAt(date: string, time: string): Date {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !/^\d{2}:\d{2}$/.test(time)) throw new ValidationError("Pick a date and start time");
-  const [h, m] = time.split(":").map(Number) as [number, number];
-  return new Date(easternMidnight(date).getTime() + (h * 60 + m) * 60_000);
-}
-
 export async function createAppointmentAction(_prev: AppointmentResult | undefined, fd: FormData): Promise<AppointmentResult> {
   const user = await requireUser();
   const s = (k: string) => String(fd.get(k) ?? "").trim();
@@ -46,11 +39,9 @@ export async function createAppointmentAction(_prev: AppointmentResult | undefin
   try {
     if (!isOwner(user)) throw new ForbiddenError("Only the owner books appointments");
     const kind = s("kind") === "job" ? "job" : "estimate";
-    const techId = s("techId");
-    if (!techId) throw new ValidationError("Choose who's going");
-    const start = easternAt(s("date"), s("time"));
-    const hours = Number(s("hours") || "1");
-    if (!(hours >= 0.25 && hours <= 12)) throw new ValidationError("Length must be between 15 minutes and 12 hours");
+    // No tech = book the time now; it waits in "Needs tech" and the customer is texted once one is assigned.
+    const techId = s("techId") || null;
+    const times = bookingTimes({ date: s("date"), window: s("window"), time: s("time"), hours: Number(s("hours") || "1") });
 
     let leadId = s("leadId");
     if (s("customerMode") === "new") {
@@ -73,7 +64,7 @@ export async function createAppointmentAction(_prev: AppointmentResult | undefin
         trade: s("trade") as never,
         source: (s("source") || "phone") as never,
         notes: opt("leadNotes"),
-        assignedToId: techId,
+        assignedToId: techId ?? undefined,
       });
       leadId = lead.id;
     }
@@ -83,8 +74,7 @@ export async function createAppointmentAction(_prev: AppointmentResult | undefin
       leadId,
       kind,
       techId,
-      start,
-      end: new Date(start.getTime() + hours * 3_600_000),
+      ...times,
       notes: opt("notes"),
     });
     revalidatePath("/calendar");
@@ -92,7 +82,7 @@ export async function createAppointmentAction(_prev: AppointmentResult | undefin
     revalidatePath("/my-day");
     revalidatePath("/pipeline");
     revalidatePath(`/leads/${leadId}`);
-    return { ok: "Appointment booked", leadId };
+    return { ok: techId ? "Appointment booked" : "Booked without a tech (Needs tech)", leadId };
   } catch (err) {
     if (err instanceof z.ZodError) return { error: err.issues[0]?.message ?? "Please check the form" };
     if (err instanceof ValidationError || err instanceof ForbiddenError || err instanceof NotFoundError) return { error: err.message };

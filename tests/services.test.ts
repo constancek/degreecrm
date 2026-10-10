@@ -44,7 +44,7 @@ describe("leads", () => {
 
     await processOutbox();
     expect(discord.sent).toHaveLength(2);
-    expect(discord.sent[0]!.embeds![0]!.title).toBe("New: No heat");
+    expect(discord.sent[0]!.embeds![0]!.title).toBe("New request: No heat");
   });
 
   it("scopes techs to their own leads and stops them assigning", async () => {
@@ -74,7 +74,7 @@ describe("leads", () => {
     await logNote(owner, lead.id, "Booked for Tue 9am");
     await processOutbox();
 
-    expect(discord.sent.map((m) => m.embeds![0]!.title)).toEqual(["Estimate scheduled: No heat"]);
+    expect(discord.sent.map((m) => m.embeds![0]!.title)).toEqual(["Scheduled: No heat"]);
     const full = await getLead(owner, lead.id);
     expect(full.activities.filter((a) => a.type === "stage_changed")).toHaveLength(2);
     expect(full.activities[0]!.body).toBe("Booked for Tue 9am");

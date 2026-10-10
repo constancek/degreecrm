@@ -6,7 +6,9 @@ import { addDaysYmd, easternMidnight, easternYmd } from "@/lib/services/dispatch
 import { formatPhone } from "@/lib/phone";
 import { formatAddress } from "@/lib/notifications/discord-embeds";
 import { tradeLabel } from "@/lib/stages";
-import { VisitStatusButtons } from "@/components/ops/ops-forms";
+import { VisitActions } from "@/components/ops/visit-actions";
+import { arrivalLabel, arrivalOf, clock } from "@/lib/booking";
+import { getCompany } from "@/lib/services/company";
 
 export const metadata: Metadata = { title: "My day" };
 
@@ -18,7 +20,7 @@ export default async function MyDayPage({ searchParams }: PageProps<"/my-day">) 
   const { day } = await searchParams;
   const ymd = typeof day === "string" && /^\d{4}-\d{2}-\d{2}$/.test(day) ? day : easternYmd(new Date());
   const from = easternMidnight(ymd);
-  const visits = await listVisits(user, { from, to: easternMidnight(addDaysYmd(ymd, 1)), techId: user.id });
+  const [visits, company] = await Promise.all([listVisits(user, { from, to: easternMidnight(addDaysYmd(ymd, 1)), techId: user.id }), getCompany()]);
 
   return (
     <div className="mx-auto w-full max-w-xl p-4 lg:max-w-5xl">
@@ -39,10 +41,10 @@ export default async function MyDayPage({ searchParams }: PageProps<"/my-day">) 
             <li key={v.id} className="card p-4" data-visit={v.id}>
               <div className="flex items-baseline justify-between">
                 <p className="text-sm font-semibold text-brand">
-                  {TIME.format(v.start)}–{TIME.format(v.end)}
+                  {arrivalOf(v).end ? `Arrive ${arrivalLabel(arrivalOf(v))}` : `${TIME.format(v.start)}–${TIME.format(v.end)}`}
                 </p>
-                <span className="text-xs text-gray-500 capitalize">
-                  {v.kind} · {tradeLabel(v.lead.trade)}
+                <span className="text-xs text-gray-500">
+                  {v.kind === "estimate" ? "Service call" : "Job"} · {tradeLabel(v.lead.trade)}
                 </span>
               </div>
               <Link href={`/leads/${v.leadId}`} className="mt-1 block text-lg font-semibold hover:underline">
@@ -68,11 +70,22 @@ export default async function MyDayPage({ searchParams }: PageProps<"/my-day">) 
               {v.notes && <p className="mt-1 text-sm text-gray-600">Notes: {v.notes}</p>}
               {v.lead.proposals[0] && (
                 <a href={`/proposals/${v.lead.proposals[0].id}/present`} target="_blank" rel="noreferrer" className="btn-secondary mt-3 w-full py-3">
-                  {v.lead.proposals[0].status === "signed" ? "Show signed proposal" : "Present proposal"}
+                  {v.lead.proposals[0].status === "signed" ? "Show signed estimate" : "Present estimate to customer"}
                 </a>
               )}
               <div className="mt-3">
-                <VisitStatusButtons visitId={v.id} status={v.status} canText={Boolean(v.lead.customer.phone) && !v.lead.customer.smsOptOut} />
+                <VisitActions
+                  visitId={v.id}
+                  kind={v.kind}
+                  status={v.status}
+                  outcome={v.outcome}
+                  hasTech={Boolean(v.techId)}
+                  canText={Boolean(v.lead.customer.phone) && !v.lead.customer.smsOptOut}
+                  lateEta={v.lateEta ? clock(v.lateEta) : null}
+                  proposal={v.lead.proposals[0] ? { id: v.lead.proposals[0].id, status: v.lead.proposals[0].status } : null}
+                  leadId={v.leadId}
+                  feeDollars={(company.serviceCallFeeCents / 100).toFixed(2)}
+                />
               </div>
             </li>
           );
