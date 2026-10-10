@@ -32,3 +32,9 @@ body {
 @utility card {
   @apply rounded-lg border border-gray-200 bg-white shadow-sm;
 }
+
+@media print {
+  body {
+    background: white;
+  }
+}

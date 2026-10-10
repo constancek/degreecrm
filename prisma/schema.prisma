@@ -69,6 +69,8 @@ model User {
   activities    Activity[]
   oauthCodes    OAuthCode[]
   oauthTokens   OAuthToken[]
+  proposals     Proposal[]
+  termsVersions TermsVersion[]
 }
 
 model Customer {
@@ -100,6 +102,8 @@ model Property {
   city       String   @default("Cincinnati")
   state      String   @default("OH")
   zip        String?
+  /// e.g. "Hamilton County" — decides the sales tax rate in Ohio.
+  county     String?
   lat        Float?
   lng        Float?
   /// Access instructions, equipment on site, etc.
@@ -134,6 +138,8 @@ model Lead {
   property   Property?  @relation(fields: [propertyId], references: [id], onDelete: SetNull)
   assignedTo User?      @relation("LeadAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
   activities Activity[]
+  proposals  Proposal[]
+  photos     LeadPhoto[]
 
   @@index([stage])
   @@index([assignedToId])
@@ -237,4 +243,180 @@ model Setting {
   value     Json
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+// ---- Phase 2: price book, tax, terms, proposals -----------------------------
+
+enum PriceCategory {
+  equipment
+  material
+  labor
+  fee
+}
+
+enum Tier {
+  good
+  better
+  best
+}
+
+enum ProposalStatus {
+  draft
+  sent
+  viewed
+  signed
+  superseded
+}
+
+model PriceBookItem {
+  id          String        @id @default(cuid())
+  /// Null = usable for every trade.
+  trade       Trade?
+  category    PriceCategory @default(material)
+  name        String
+  description String?
+  sku         String?
+  unit        String        @default("ea")
+  costCents   Int?
+  priceCents  Int
+  active      Boolean       @default(true)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  lineItems LineItem[]
+
+  @@index([trade, active])
+}
+
+/// Sales tax by state + county. A row with county = "" is the statewide fallback.
+model TaxRate {
+  id        String   @id @default(cuid())
+  state     String
+  county    String   @default("")
+  /// Basis points: 780 = 7.80%.
+  rateBps   Int
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([state, county])
+}
+
+/// Terms & Conditions, versioned. A version is never edited; saving creates the next one.
+model TermsVersion {
+  id          String   @id @default(cuid())
+  version     Int      @unique
+  /// Full T&C, markdown.
+  body        String
+  /// 6–8 plain-English lines shown above the checkbox, one per line. Supports {deposit} and {expires}.
+  keyTerms    String
+  createdById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  createdBy User?      @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  proposals Proposal[]
+}
+
+model LeadPhoto {
+  id          String   @id @default(cuid())
+  leadId      String
+  /// Private Vercel Blob pathname.
+  blobPath    String
+  contentType String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  lead Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@index([leadId])
+}
+
+/// One row per version; a revision creates a new row (SPEC.md "Data model").
+model Proposal {
+  id                  String         @id @default(cuid())
+  leadId              String
+  version             Int
+  status              ProposalStatus @default(draft)
+  /// Random 32-char link token; set when sent.
+  token               String?        @unique
+  summary             String         @default("")
+  assumptions         String[]
+  exclusions          String[]
+  recommendedTier     Tier?
+  selectedOptionId    String?
+  /// Sales tax snapshot (basis points) and where it came from, e.g. "Hamilton County, OH".
+  taxRateBps          Int            @default(0)
+  taxLabel            String         @default("")
+  /// Null = company rule (e.g. 50% under $5k, 30% above), decided per option total.
+  depositPercent      Int?
+  termsVersionId      String?
+  /// What the drafter was given (notes / transcript), for reference.
+  inputNotes          String?
+  targetMarginPercent Int?
+  aiModel             String?
+  sentAt              DateTime?
+  expiresAt           DateTime?
+  firstViewedAt       DateTime?
+  lastViewedAt        DateTime?
+  viewCount           Int            @default(0)
+  gateFailures        Int            @default(0)
+  lockedAt            DateTime?
+  /// Cached PDF of the selected option (private Blob pathname) and the state it was rendered from.
+  pdfPath             String?
+  pdfKey              String?
+  createdById         String?
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
+
+  lead      Lead             @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  createdBy User?            @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  terms     TermsVersion?    @relation(fields: [termsVersionId], references: [id], onDelete: Restrict)
+  options   ProposalOption[]
+
+  @@unique([leadId, version])
+}
+
+model ProposalOption {
+  id            String   @id @default(cuid())
+  proposalId    String
+  tier          Tier
+  title         String
+  summary       String   @default("")
+  /// 4–6 bullet highlights for the option card.
+  highlights    String[]
+  warrantyText  String   @default("")
+  sortOrder     Int
+  /// Kept in sync with line items by the service (required lines only).
+  subtotalCents Int      @default(0)
+  taxCents      Int      @default(0)
+  totalCents    Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  proposal  Proposal   @relation(fields: [proposalId], references: [id], onDelete: Cascade)
+  lineItems LineItem[]
+
+  @@unique([proposalId, tier])
+}
+
+model LineItem {
+  id              String   @id @default(cuid())
+  optionId        String
+  description     String
+  qty             Float    @default(1)
+  unit            String   @default("ea")
+  unitCents       Int
+  /// Optional add-ons are listed but not included in the total.
+  isOptional      Boolean  @default(false)
+  /// Claude couldn't find this in the price book; the owner must set a price before sending.
+  needsPrice      Boolean  @default(false)
+  priceBookItemId String?
+  sortOrder       Int
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  option        ProposalOption @relation(fields: [optionId], references: [id], onDelete: Cascade)
+  priceBookItem PriceBookItem? @relation(fields: [priceBookItemId], references: [id], onDelete: SetNull)
+
+  @@index([optionId])
 }

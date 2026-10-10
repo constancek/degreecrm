@@ -119,3 +119,53 @@ describe("database url", () => {
     expect(normalizeSslMode("postgresql://u:p@localhost:54329/db")).toBe("postgresql://u:p@localhost:54329/db");
   });
 });
+
+import { formatCents, marginPercent, optionTotals, parseDollars, parseRate } from "@/lib/money";
+import { normalizeCounty } from "@/lib/services/tax";
+import { renderKeyTerms } from "@/lib/services/terms";
+import { depositPercentFor } from "@/lib/services/company";
+
+describe("money", () => {
+  it("parses and formats dollars and rates", () => {
+    expect(parseDollars("$1,234.5")).toBe(123450);
+    expect(parseDollars("abc")).toBeNull();
+    expect(parseDollars("-5")).toBeNull();
+    expect(formatCents(123450)).toBe("$1,234.50");
+    expect(formatCents(500000)).toBe("$5,000");
+    expect(parseRate("7.8%")).toBe(780);
+  });
+  it("totals exclude optional add-ons and tax every included line", () => {
+    const t = optionTotals(
+      [
+        { qty: 1, unitCents: 100000, isOptional: false },
+        { qty: 3.5, unitCents: 12500, isOptional: false },
+        { qty: 1, unitCents: 99900, isOptional: true },
+      ],
+      780,
+    );
+    expect(t).toEqual({ subtotalCents: 143750, taxCents: 11213, totalCents: 154963 });
+  });
+  it("computes margin only when every line has a cost", () => {
+    expect(marginPercent([{ qty: 1, unitCents: 1000, costCents: 600, isOptional: false }])).toBe(40);
+    expect(marginPercent([{ qty: 1, unitCents: 1000, costCents: null, isOptional: false }])).toBeNull();
+  });
+});
+
+describe("tax, terms, deposit", () => {
+  it("normalizes county names", () => {
+    expect(normalizeCounty("Hamilton County")).toBe("Hamilton");
+    expect(normalizeCounty("  warren ")).toBe("Warren");
+  });
+  it("fills key-term placeholders", () => {
+    expect(renderKeyTerms("A {deposit} deposit.\nValid until {expires}.", { depositPercent: 30, expires: "Nov 8, 2026" })).toEqual([
+      "A 30% deposit.",
+      "Valid until Nov 8, 2026.",
+    ]);
+  });
+  it("uses 50% under the threshold, 30% at or above, unless overridden", () => {
+    const c = { depositThresholdCents: 500000, depositBelowPercent: 50, depositAbovePercent: 30 } as never;
+    expect(depositPercentFor(499999, c, null)).toBe(50);
+    expect(depositPercentFor(500000, c, null)).toBe(30);
+    expect(depositPercentFor(100, c, 25)).toBe(25);
+  });
+});

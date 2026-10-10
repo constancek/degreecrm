@@ -25,6 +25,10 @@ const leadSummaryInclude = {
 export type LeadSummary = Prisma.LeadGetPayload<{ include: typeof leadSummaryInclude }>;
 
 /** Techs only see leads assigned to them (SPEC.md Security). */
+export function leadScope(actor: Actor): Prisma.LeadWhereInput {
+  return scope(actor);
+}
+
 function scope(actor: Actor): Prisma.LeadWhereInput {
   return isOwner(actor) ? {} : { assignedToId: (actor as { id: string }).id };
 }
@@ -81,7 +85,10 @@ async function findOrCreateProperty(
   });
   if (existing) {
     if (existing.lat == null && input.lat != null && input.lng != null) {
-      return tx.property.update({ where: { id: existing.id }, data: { lat: input.lat, lng: input.lng } });
+      return tx.property.update({
+        where: { id: existing.id },
+        data: { lat: input.lat, lng: input.lng, county: existing.county ?? input.county },
+      });
     }
     return existing;
   }
@@ -94,6 +101,7 @@ async function findOrCreateProperty(
       state: (input.state ?? "OH").toUpperCase(),
       zip: input.zip,
       notes: input.notes,
+      county: input.county,
       lat: input.lat,
       lng: input.lng,
     },

@@ -7,19 +7,28 @@ import { requireUser } from "@/lib/session";
 import { listActiveStaff } from "@/lib/services/users";
 import { getDiscordStages, setDiscordStages } from "@/lib/services/settings";
 import { STAGES } from "@/lib/stages";
+import { formatPhone } from "@/lib/phone";
+import { getCompany } from "@/lib/services/company";
+import { PLACEHOLDER_KEY_TERMS, PLACEHOLDER_TERMS, currentTerms } from "@/lib/services/terms";
+import { listTaxRates } from "@/lib/services/tax";
+import { CompanySettings, TaxSettings, TermsSettings } from "./owner-settings";
 
 export const metadata: Metadata = { title: "Settings" };
 
 export default async function SettingsPage() {
   const user = await requireUser();
-  const [staff, discordStages, connections] = await Promise.all([
-    user.role === "owner" ? listActiveStaff() : Promise.resolve([]),
+  const isOwner = user.role === "owner";
+  const [staff, discordStages, connections, company, terms, taxRates] = await Promise.all([
+    isOwner ? listActiveStaff() : Promise.resolve([]),
     getDiscordStages(),
     db.oAuthToken.findMany({
       where: { userId: user.id, revokedAt: null, refreshExpiresAt: { gt: new Date() } },
       include: { client: true },
       orderBy: { createdAt: "desc" },
     }),
+    getCompany(),
+    currentTerms(),
+    isOwner ? listTaxRates() : Promise.resolve([]),
   ]);
 
   async function disconnect(formData: FormData) {
@@ -45,6 +54,18 @@ export default async function SettingsPage() {
   return (
     <div className="mx-auto w-full max-w-3xl space-y-4 p-4">
       <h1 className="text-lg font-semibold">Settings</h1>
+
+      {isOwner && (
+        <>
+          <CompanySettings company={company} phoneDisplay={formatPhone(company.phone)} />
+          <TermsSettings
+            version={terms?.version ?? null}
+            body={terms?.body ?? PLACEHOLDER_TERMS}
+            keyTerms={terms?.keyTerms ?? PLACEHOLDER_KEY_TERMS}
+          />
+          <TaxSettings rates={taxRates.map((r) => ({ state: r.state, county: r.county, rateBps: r.rateBps }))} />
+        </>
+      )}
 
       <section className="card p-4">
         <h2 className="font-semibold">Connect Claude</h2>

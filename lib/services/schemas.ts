@@ -22,6 +22,7 @@ export const propertyInput = z.object({
   city: optionalText(100),
   state: optionalText(2),
   zip: optionalText(10),
+  county: optionalText(100),
   notes: optionalText(2000),
   lat: z.coerce.number().min(-90).max(90).optional(),
   lng: z.coerce.number().min(-180).max(180).optional(),

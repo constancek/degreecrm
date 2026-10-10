@@ -1,5 +1,28 @@
 # Changelog
 
+## Phase 2: Proposals (2026-10-10)
+
+- Price book (`/pricebook`): equipment, materials, labor and fees per trade (or shared), with cost for margins.
+- Claude drafts Good/Better/Best proposals as strict JSON (Claude Opus 5 with server-side fallback) from notes or a
+  Plaud transcript, photos (resized in the browser, stored in private Blob), equipment and a target margin. Prices come
+  only from the price book; anything else is flagged "needs price". Trade prompts live in `prompts/`.
+- Proposal editor: edit text and lines, drag lines between options, set the recommended option and deposit, live
+  totals, tax and margin, add custom priced lines to the price book. Sent proposals are frozen; "Create revision"
+  makes the next version, and sending it supersedes the old link.
+- Send: private 32-character link valid 30 days, lead → Estimate sent, optional text via Quo (with STOP wording).
+- Client page on `go.`: last-4-of-phone (or email) gate with a 30-day signed cookie, lock + Discord alert after 5
+  misses; three option cards, Recommended badge, line-item details, key terms with the deposit, T&C checkbox;
+  expired/replaced links offer "Request an updated proposal". Views, selections and the checkbox are logged.
+- PDF of the selected option (key terms, full T&C, signature block) rendered by headless Chromium from the same
+  components, cached in Blob. Owner can download any option.
+- Settings: company details, logo upload, deposit rule (50% under $5k / 30% otherwise), versioned Terms &
+  Conditions with key terms, and sales tax by county (Cincinnati-area defaults seeded by migration).
+- Sales tax on every line, by the job address's county (Google Geocoding / Places), snapshotted on the proposal.
+- MCP: `get_price_book`, `create_proposal_draft`, `update_proposal_option`, `send_proposal` (owner only), resources
+  `crm://lead/{id}` and `crm://pricebook/{trade}`; Claude skills in `skills/proposal` and `skills/my-day`.
+- Seed: sample price book, T&C v1 and one full sent proposal. Tests: proposal services, gate, tax; Playwright happy
+  path from drafting to the customer's PDF, plus a tech drafting over MCP.
+
 ## Phase 1 follow-ups (2026-10-09)
 
 - Deployed to Vercel (`degreecrm`) with Neon Postgres (iad1), a private Vercel Blob store, and app./go. domains.

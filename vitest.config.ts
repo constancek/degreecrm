@@ -16,6 +16,8 @@ export default defineConfig({
       ALLOWED_EMAILS: "tech@test.dev",
       DATA_ENCRYPTION_KEY: Buffer.alloc(32, 7).toString("base64"),
       DISCORD_SERVICE_WEBHOOK_URL: "",
+      AUTH_SECRET: "test-secret",
+      CLIENT_HOST: "go.app.test",
     },
     // Service tests share one database.
     fileParallelism: false,

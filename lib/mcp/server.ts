@@ -1,12 +1,23 @@
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { McpServer, ResourceTemplate } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { db } from "@/lib/db";
 import { appUrl } from "@/lib/env";
 import { formatPhone } from "@/lib/phone";
 import { SOURCE_IDS, STAGE_IDS, TRADE_IDS, stageInfo } from "@/lib/stages";
 import { formatAddress } from "@/lib/notifications/discord-embeds";
 import { ForbiddenError, NotFoundError, ValidationError, type Actor } from "@/lib/services/actor";
 import { createLead, getLead, logNote, searchLeads, type LeadSummary } from "@/lib/services/leads";
+import { listPriceBook } from "@/lib/services/pricebook";
+import {
+  createProposalDraft,
+  getProposal,
+  saveProposal,
+  sendProblems,
+  sendProposal,
+  toEditInput,
+  type FullProposal,
+} from "@/lib/services/proposals";
+import { db } from "@/lib/db";
+import { formatCents } from "@/lib/money";
 import type { StaffActor } from "@/lib/session";
 
 // The MCP tools call the same service layer as the web UI, so permissions and side effects
@@ -74,6 +85,9 @@ export function buildMcpServer(actor: StaffActor) {
         `You are connected to the Degree of Comfort CRM as ${actor.name} (${actor.role}). ` +
         "Leads move through a pipeline of stages. Use search_leads to find a lead id, get_lead for details and history, " +
         "create_lead for new service calls, and log_note to record what happened. " +
+        "For proposals: read the lead and get_price_book, draft Good/Better/Best in the chat and confirm with the user, then create_proposal_draft. " +
+        "Prices come only from the price book; lines without a price book id are flagged for the owner to price. " +
+        "Drafts are reviewed and sent by the owner (send_proposal is owner-only). " +
         (actor.role === "tech" ? "As a tech you only see leads assigned to you." : ""),
     },
   );
@@ -202,5 +216,197 @@ export function buildMcpServer(actor: StaffActor) {
     }),
   );
 
+  // ---- Proposals -------------------------------------------------------------
+
+  const tierEnum = z.enum(["good", "better", "best"]);
+  const lineSchema = z.object({
+    description: z.string().min(1),
+    qty: z.number().positive(),
+    unit: z.string().default("ea"),
+    priceBookItemId: z.string().nullable().describe("Price book item id, or null if nothing fits (owner prices it)"),
+    isOptional: z.boolean().default(false).describe("Optional add-on, not included in the total"),
+  });
+  const optionSchema = z.object({
+    tier: tierEnum,
+    title: z.string().min(1),
+    summary: z.string().default(""),
+    highlights: z.array(z.string()).describe("4-6 short customer-facing benefits"),
+    warrantyText: z.string().default(""),
+    lineItems: z.array(lineSchema),
+  });
+
+  server.registerTool(
+    "get_price_book",
+    {
+      title: "Get price book",
+      description: "Price book items (id, name, unit, price) for a trade, including items shared by every trade. Use ids in proposal line items.",
+      inputSchema: { trade: z.enum(TRADE_IDS), query: z.string().optional().describe("Filter by words in the name/description") },
+      annotations: { readOnlyHint: true },
+    },
+    run(actor, "get_price_book", async ({ trade, query }: { trade: (typeof TRADE_IDS)[number]; query?: string }) => ({
+      result: (await listPriceBook({ trade, query })).map((i) => ({
+        id: i.id,
+        category: i.category,
+        name: i.name,
+        description: i.description,
+        unit: i.unit,
+        price: formatCents(i.priceCents, { cents: true }),
+      })),
+    })),
+  );
+
+  server.registerTool(
+    "create_proposal_draft",
+    {
+      title: "Create proposal draft",
+      description:
+        "Save a Good/Better/Best proposal draft on a lead. Exactly three options (good, better, best). Prices are filled from the " +
+        "price book; lines with priceBookItemId null are flagged 'needs price'. The draft is not sent to the customer.",
+      inputSchema: {
+        leadId: z.string(),
+        summary: z.string().describe("One paragraph for the customer"),
+        recommendedTier: tierEnum.nullable().default("better"),
+        assumptions: z.array(z.string()).default([]),
+        exclusions: z.array(z.string()).default([]),
+        options: z.array(optionSchema).length(3),
+      },
+    },
+    run(actor, "create_proposal_draft", async (a: { leadId: string } & Record<string, unknown>) => {
+      const { leadId, ...content } = a;
+      const p = await createProposalDraft(actor, leadId, content as never, { aiModel: "claude (MCP)" });
+      return { leadId, result: proposalSummary(p) };
+    }),
+  );
+
+  server.registerTool(
+    "update_proposal_option",
+    {
+      title: "Update proposal option",
+      description:
+        "Change one option (good/better/best) of a draft proposal. Fields you omit stay as they are. lineItems replaces the whole list. " +
+        "Price book lines take the price book price" + (actor.role === "owner" ? "; custom lines may set unitPriceDollars." : "; custom lines are left for the owner to price."),
+      inputSchema: {
+        proposalId: z.string(),
+        tier: tierEnum,
+        title: z.string().optional(),
+        summary: z.string().optional(),
+        highlights: z.array(z.string()).optional(),
+        warrantyText: z.string().optional(),
+        lineItems: z.array(lineSchema.extend({ unitPriceDollars: z.number().min(0).optional() })).optional(),
+      },
+    },
+    run(actor, "update_proposal_option", async (a: {
+      proposalId: string;
+      tier: "good" | "better" | "best";
+      title?: string;
+      summary?: string;
+      highlights?: string[];
+      warrantyText?: string;
+      lineItems?: (z.infer<typeof lineSchema> & { unitPriceDollars?: number })[];
+    }) => {
+      const p = await getProposal(actor, a.proposalId);
+      const edit = toEditInput(p);
+      const option = edit.options.find((o) => o.tier === a.tier)!;
+      if (a.title !== undefined) option.title = a.title;
+      if (a.summary !== undefined) option.summary = a.summary;
+      if (a.highlights !== undefined) option.highlights = a.highlights;
+      if (a.warrantyText !== undefined) option.warrantyText = a.warrantyText;
+      if (a.lineItems) {
+        const ids = a.lineItems.map((l) => l.priceBookItemId).filter((x): x is string => Boolean(x));
+        const book = new Map((await db.priceBookItem.findMany({ where: { id: { in: ids } } })).map((i) => [i.id, i]));
+        option.lineItems = a.lineItems.map((l) => {
+          const item = l.priceBookItemId ? book.get(l.priceBookItemId) : undefined;
+          const custom = actor.role === "owner" && l.unitPriceDollars != null ? Math.round(l.unitPriceDollars * 100) : 0;
+          return {
+            description: l.description,
+            qty: l.qty,
+            unit: item?.unit ?? l.unit,
+            unitCents: item ? item.priceCents : custom,
+            isOptional: l.isOptional,
+            priceBookItemId: item?.id ?? null,
+          };
+        });
+      }
+      const saved = await saveProposal(actor, a.proposalId, edit);
+      return { leadId: saved.leadId, result: proposalSummary(saved) };
+    }),
+  );
+
+  if (actor.role === "owner") {
+    server.registerTool(
+      "send_proposal",
+      {
+        title: "Send proposal",
+        description:
+          "Owner only. Send a draft proposal to the customer: creates the private link (valid 30 days), moves the lead to Estimate sent " +
+          "and optionally texts the link from the company number. Confirm with the user before calling.",
+        inputSchema: { proposalId: z.string(), textCustomer: z.boolean().default(true) },
+        annotations: { destructiveHint: false, openWorldHint: true },
+      },
+      run(actor, "send_proposal", async ({ proposalId, textCustomer }: { proposalId: string; textCustomer: boolean }) => {
+        const res = await sendProposal(actor, proposalId, { textCustomer });
+        const p = await getProposal(actor, proposalId);
+        return { leadId: p.leadId, result: res };
+      }),
+    );
+  }
+
+  // ---- Resources -------------------------------------------------------------
+
+  server.registerResource(
+    "lead",
+    new ResourceTemplate("crm://lead/{id}", { list: undefined }),
+    { title: "Lead", description: "A lead with customer, property and recent activity", mimeType: "application/json" },
+    async (uri, vars) => {
+      const lead = await getLead(actor, String(vars.id));
+      return {
+        contents: [
+          {
+            uri: uri.href,
+            mimeType: "application/json",
+            text: JSON.stringify({ ...summarize(lead), notes: lead.notes, activity: lead.activities.slice(0, 20).map((x) => ({ at: x.createdAt, type: x.type, body: x.body })) }),
+          },
+        ],
+      };
+    },
+  );
+
+  server.registerResource(
+    "pricebook",
+    new ResourceTemplate("crm://pricebook/{trade}", { list: undefined }),
+    { title: "Price book", description: "Active price book items for a trade (hvac, plumbing, electrical)", mimeType: "application/json" },
+    async (uri, vars) => {
+      const trade = String(vars.trade);
+      if (!(TRADE_IDS as string[]).includes(trade)) throw new Error("Unknown trade");
+      const items = await listPriceBook({ trade: trade as (typeof TRADE_IDS)[number] });
+      return {
+        contents: [
+          {
+            uri: uri.href,
+            mimeType: "application/json",
+            text: JSON.stringify(items.map((i) => ({ id: i.id, category: i.category, name: i.name, description: i.description, unit: i.unit, priceCents: i.priceCents }))),
+          },
+        ],
+      };
+    },
+  );
+
   return server;
+}
+
+function proposalSummary(p: FullProposal) {
+  return {
+    proposalId: p.id,
+    version: p.version,
+    status: p.status,
+    url: `${appUrl()}/proposals/${p.id}`,
+    tax: p.taxLabel || "no rate found for this address",
+    options: p.options.map((o) => ({
+      tier: o.tier,
+      title: o.title,
+      total: formatCents(o.totalCents, { cents: true }),
+      linesNeedingPrice: o.lineItems.filter((l) => l.needsPrice).map((l) => l.description),
+    })),
+    sendBlockers: sendProblems(p),
+  };
 }

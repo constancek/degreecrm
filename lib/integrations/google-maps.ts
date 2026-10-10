@@ -2,9 +2,10 @@
 // https://developers.google.com/maps/documentation/geocoding/requests-geocoding
 
 export type GeoPoint = { lat: number; lng: number };
+export type GeoResult = GeoPoint & { county: string | null; state: string | null };
 
 export interface GeocodingClient {
-  geocode(address: string): Promise<GeoPoint | null>;
+  geocode(address: string): Promise<GeoResult | null>;
 }
 
 export function createGeocodingClient(apiKey: string): GeocodingClient {
@@ -18,16 +19,28 @@ export function createGeocodingClient(apiKey: string): GeocodingClient {
       const data = (await res.json()) as {
         status: string;
         error_message?: string;
-        results?: { geometry: { location: GeoPoint } }[];
+        results?: {
+          geometry: { location: GeoPoint };
+          address_components: { long_name: string; short_name: string; types: string[] }[];
+        }[];
       };
       if (data.status === "ZERO_RESULTS") return null;
       if (data.status !== "OK") throw new Error(`Geocoding failed: ${data.status} ${data.error_message ?? ""}`.trim());
-      return data.results?.[0]?.geometry.location ?? null;
+      const r = data.results?.[0];
+      if (!r) return null;
+      const comp = (type: string) => r.address_components.find((c) => c.types.includes(type));
+      return {
+        ...r.geometry.location,
+        county: comp("administrative_area_level_2")?.long_name ?? null,
+        state: comp("administrative_area_level_1")?.short_name ?? null,
+      };
     },
   };
 }
 
-export function createMockGeocodingClient(point: GeoPoint | null = { lat: 39.1031, lng: -84.512 }) {
+export function createMockGeocodingClient(
+  point: GeoResult | null = { lat: 39.1031, lng: -84.512, county: "Hamilton County", state: "OH" },
+) {
   const calls: string[] = [];
   return {
     calls,

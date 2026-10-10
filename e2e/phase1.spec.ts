@@ -152,11 +152,15 @@ test("Claude connector: OAuth sign-in, then MCP tools act as that user", async (
   expect(init.status()).toBe(200);
 
   const tools = await (await mcp({ jsonrpc: "2.0", id: 2, method: "tools/list" })).json();
+  // Techs get every tool except send_proposal (owner only).
   expect(tools.result.tools.map((t: { name: string }) => t.name).sort()).toEqual([
     "create_lead",
+    "create_proposal_draft",
     "get_lead",
+    "get_price_book",
     "log_note",
     "search_leads",
+    "update_proposal_option",
   ]);
 
   const search = await (

@@ -77,6 +77,8 @@ Twelve Prisma models cover V1; every money field is an integer in cents, every t
 
 Terms: store the full T&C as a versioned markdown file in the repo (`terms/v1.md`); `Signature.termsVersion` records which one the client accepted.
 
+> **Decision (2026-10-10):** T&C, key terms, company details and logo are edited in Settings instead of repo files. T&C are stored as immutable versions (`TermsVersion`); a sent proposal records the version it was sent with. The price book starts empty and is entered in the app. Sales tax applies to every line at the job address's county rate (Settings → Sales tax rates).
+
 ## Proposals: Good / Better / Best
 
 The owner dictates or types the job notes, Claude returns three priced options as JSON, the owner edits and sends, and the client picks one on their phone.

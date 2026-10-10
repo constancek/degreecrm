@@ -25,6 +25,9 @@ export default async function CrmLayout({ children }: LayoutProps<"/">) {
             <Link href="/leads/new" className="hover:text-white">
               New lead
             </Link>
+            <Link href="/pricebook" className="hover:text-white">
+              Price book
+            </Link>
             <Link href="/settings" className="hover:text-white">
               Settings
             </Link>

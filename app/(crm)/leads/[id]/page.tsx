@@ -10,6 +10,8 @@ import { formatPhone } from "@/lib/phone";
 import { formatDateTime, timeAgo } from "@/lib/format";
 import { formatAddress } from "@/lib/notifications/discord-embeds";
 import { AssignForm, LeadDetailsForm, NoteForm, StageForm } from "./lead-forms";
+import { listLeadProposals } from "@/lib/services/proposals";
+import { formatCents } from "@/lib/money";
 
 export const metadata: Metadata = { title: "Lead" };
 
@@ -20,7 +22,10 @@ export default async function LeadPage({ params }: PageProps<"/leads/[id]">) {
     if (e instanceof NotFoundError) notFound();
     throw e;
   });
-  const staff = user.role === "owner" ? await listActiveStaff() : [];
+  const [staff, proposals] = await Promise.all([
+    user.role === "owner" ? listActiveStaff() : Promise.resolve([]),
+    listLeadProposals(user, lead.id),
+  ]);
   const address = formatAddress(lead.property);
 
   return (
@@ -71,6 +76,40 @@ export default async function LeadPage({ params }: PageProps<"/leads/[id]">) {
               <p className="mt-1 text-sm text-gray-500">No address yet</p>
             )}
           </div>
+        </section>
+
+        <section className="card p-4">
+          <div className="flex items-center justify-between">
+            <h2 className="font-semibold">Proposals</h2>
+            <Link href={`/leads/${lead.id}/proposal/new`} className="btn-primary">
+              New proposal
+            </Link>
+          </div>
+          {proposals.length === 0 ? (
+            <p className="mt-2 text-sm text-gray-500">No proposals yet.</p>
+          ) : (
+            <ul className="mt-3 divide-y text-sm">
+              {proposals.map((p) => {
+                const totals = p.options.map((o) => o.totalCents).filter((t) => t > 0);
+                return (
+                  <li key={p.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2">
+                    <Link href={`/proposals/${p.id}`} className="font-medium text-brand hover:underline">
+                      v{p.version}
+                    </Link>
+                    <span className="capitalize">{p.status}</span>
+                    {totals.length > 0 && (
+                      <span className="text-gray-600">
+                        {formatCents(Math.min(...totals))}–{formatCents(Math.max(...totals))}
+                      </span>
+                    )}
+                    <span className="text-gray-500">
+                      {p.viewCount ? `Viewed ${p.viewCount}× · last ${formatDateTime(p.lastViewedAt!)}` : p.sentAt ? "Not opened yet" : ""}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
         </section>
 
         <LeadDetailsForm
@@ -151,6 +190,24 @@ function describeActivity(type: string, data: unknown): string {
       return `updated ${(d.fields as unknown as string[] | undefined)?.join(", ") ?? "details"}`;
     case "web_form":
       return "submitted the website form";
+    case "proposal_drafted":
+      return "drafted a proposal";
+    case "proposal_sent":
+      return "sent the proposal";
+    case "proposal_viewed":
+      return "opened the proposal";
+    case "option_selected":
+      return "picked an option";
+    case "terms_checked":
+      return "agreed to the Terms & Conditions";
+    case "proposal_locked":
+      return "locked the proposal link";
+    case "fresh_link_requested":
+      return "asked for an updated proposal";
+    case "sms_sent":
+      return "sent a text";
+    case "sms_failed":
+      return "tried to send a text";
     default:
       return type.replace(/_/g, " ");
   }

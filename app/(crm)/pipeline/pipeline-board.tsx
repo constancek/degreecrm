@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useOptimistic, useState, useTransition } from "react";
+import { useId, useOptimistic, useState, useTransition } from "react";
 import {
   DndContext,
   PointerSensor,
@@ -46,6 +46,8 @@ export function PipelineBoard({ leads, showLost }: { leads: BoardLead[]; showLos
     useSensor(KeyboardSensor),
   );
 
+  // A stable id keeps dnd-kit's aria ids identical on server and client (no hydration mismatch).
+  const dndId = useId();
   const columns = STAGES.filter((s) => s.id !== "lost" || showLost);
 
   function onDragEnd(e: DragEndEvent) {
@@ -71,7 +73,7 @@ export function PipelineBoard({ leads, showLost }: { leads: BoardLead[]; showLos
   return (
     <>
       {error && <p className="mx-4 mb-2 rounded-md bg-red-50 p-2 text-sm text-red-700">{error}</p>}
-      <DndContext sensors={sensors} onDragEnd={onDragEnd}>
+      <DndContext id={dndId} sensors={sensors} onDragEnd={onDragEnd}>
         <div className="flex flex-1 gap-3 overflow-x-auto px-4 pb-4">
           {columns.map((col) => (
             <Column

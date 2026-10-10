@@ -31,7 +31,7 @@ function loadPlaces(apiKey: string): Promise<google.maps.PlacesLibrary> {
 
 type Suggestion = { id: string; main: string; secondary: string; prediction: google.maps.places.PlacePrediction };
 
-type Address = { street: string; unit: string; city: string; state: string; zip: string; lat: string; lng: string };
+type Address = { street: string; unit: string; city: string; state: string; zip: string; county: string; lat: string; lng: string };
 
 function parseComponents(components: google.maps.places.AddressComponent[]): Partial<Address> {
   const get = (type: string, short = false) => {
@@ -44,11 +44,12 @@ function parseComponents(components: google.maps.places.AddressComponent[]): Par
     city: get("locality") || get("sublocality") || get("postal_town") || get("administrative_area_level_3"),
     state: get("administrative_area_level_1", true),
     zip: get("postal_code"),
+    county: get("administrative_area_level_2"),
   };
 }
 
 export function AddressFields({ apiKey }: { apiKey?: string }) {
-  const [addr, setAddr] = useState<Address>({ street: "", unit: "", city: "Cincinnati", state: "OH", zip: "", lat: "", lng: "" });
+  const [addr, setAddr] = useState<Address>({ street: "", unit: "", city: "Cincinnati", state: "OH", zip: "", county: "", lat: "", lng: "" });
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [active, setActive] = useState(-1);
   const [open, setOpen] = useState(false);
@@ -71,7 +72,7 @@ export function AddressFields({ apiKey }: { apiKey?: string }) {
 
   function onStreetChange(value: string) {
     // Typing over a picked address invalidates its coordinates.
-    set({ street: value, lat: "", lng: "" });
+    set({ street: value, county: "", lat: "", lng: "" });
     if (debounce.current) clearTimeout(debounce.current);
     const lib = places.current;
     if (!lib || value.trim().length < 3) {
@@ -218,6 +219,7 @@ export function AddressFields({ apiKey }: { apiKey?: string }) {
         />
       </div>
       <input type="hidden" name="state" value={addr.state} />
+      <input type="hidden" name="county" value={addr.county} />
       <input type="hidden" name="lat" value={addr.lat} />
       <input type="hidden" name="lng" value={addr.lng} />
     </>

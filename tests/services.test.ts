@@ -15,7 +15,7 @@ import { makeUser, resetDb } from "./helpers";
 
 const discord = createMockDiscordClient();
 setDiscordClient(discord);
-const geocoder = createMockGeocodingClient({ lat: 39.1, lng: -84.5 });
+const geocoder = createMockGeocodingClient({ lat: 39.1, lng: -84.5, county: "Hamilton County", state: "OH" });
 setGeocodingClient(geocoder);
 
 beforeEach(async () => {
