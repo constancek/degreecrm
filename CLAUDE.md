@@ -71,6 +71,8 @@ npm run worker        # scheduler loop (follow-up after 24 h, lost after 60 d id
 npm run lint && npm run typecheck && npm test && npm run test:e2e
 ```
 
+`.env.local` (from `vercel link` / `vercel env pull`) overrides `.env` in Next.js. Never keep Neon `DATABASE_URL`/`PG*`/`POSTGRES_*` in it: the Vercel development env points at the production database.
+
 Local sign-in without Google: set `E2E_AUTH=1` in `.env`, then use the test login on /login with an allowed email.
 `npm test` and `npm run test:e2e` use the `degreecrm_test` database and wipe it.
 
