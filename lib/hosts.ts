@@ -26,6 +26,7 @@ export function isClientPath(pathname: string): boolean {
     pathname.startsWith("/terms/") ||
     pathname === "/book" ||
     pathname === "/privacy" ||
+    pathname === "/terms-of-service" ||
     pathname.startsWith("/brand/") ||
     // Test-only stand-ins (404 unless MOCK_INTEGRATIONS=1).
     pathname.startsWith("/api/dev/") ||

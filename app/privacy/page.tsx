@@ -206,8 +206,8 @@ export default async function PrivacyPage() {
       </div>
 
       <footer className="mt-12 border-t pt-4 text-sm text-gray-500">
-        <Link href="/" className="underline">
-          {company.name}
+        <Link href="/terms-of-service" className="underline">
+          Terms of Service
         </Link>
       </footer>
     </main>

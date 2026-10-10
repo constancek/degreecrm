@@ -140,6 +140,10 @@ export function BookingForm({ dates, embedded }: { dates: { ymd: string; label: 
             We&apos;ll confirm by text. By submitting you agree to receive texts about your appointment; reply STOP to opt out. See our{" "}
             <a href="/privacy" target="_blank" rel="noreferrer" className="underline">
               Privacy Policy
+            </a>{" "}
+            and{" "}
+            <a href="/terms-of-service" target="_blank" rel="noreferrer" className="underline">
+              Terms of Service
             </a>
             .
           </p>

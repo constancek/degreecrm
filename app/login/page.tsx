@@ -77,6 +77,10 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
           <a href="/privacy" className="underline">
             Privacy Policy
           </a>
+          {" · "}
+          <a href="/terms-of-service" className="underline">
+            Terms of Service
+          </a>
         </p>
       </div>
     </main>
