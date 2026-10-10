@@ -1,6 +1,7 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { db } from "@/lib/db";
 import { createMockDiscordClient, setDiscordClient } from "@/lib/integrations/discord";
+import { createMockGeocodingClient, setGeocodingClient } from "@/lib/integrations/google-maps";
 import { assignLead, changeStage, createLead, getLead, listBoardLeads, logNote } from "@/lib/services/leads";
 import { processOutbox } from "@/lib/services/outbox";
 import { submitWebLead } from "@/lib/services/intake";
@@ -13,6 +14,8 @@ import { makeUser, resetDb } from "./helpers";
 
 const discord = createMockDiscordClient();
 setDiscordClient(discord);
+const geocoder = createMockGeocodingClient({ lat: 39.1, lng: -84.5 });
+setGeocodingClient(geocoder);
 
 beforeEach(async () => {
   await resetDb();
@@ -85,6 +88,21 @@ describe("leads", () => {
     expect(row.status).toBe("pending");
     expect(row.nextAttemptAt.getTime()).toBeGreaterThan(Date.now());
     setDiscordClient(discord);
+  });
+});
+
+describe("property coordinates", () => {
+  it("keeps autocomplete coordinates and geocodes addresses that arrive without them", async () => {
+    const owner = await makeUser("owner", "owner@test.dev");
+    geocoder.calls.length = 0;
+
+    const picked = await createLead(owner, { ...baseLead, property: { street: "3412 Erie Ave", lat: 39.14, lng: -84.43 } });
+    expect(await db.property.findUniqueOrThrow({ where: { id: picked.propertyId! } })).toMatchObject({ lat: 39.14, lng: -84.43 });
+    expect(geocoder.calls).toEqual([]);
+
+    const typed = await createLead(owner, { ...baseLead, customer: { name: "Other", phone: "5135550999" } });
+    expect(geocoder.calls).toEqual(["1 Vine St, Cincinnati, OH, 45202"]);
+    expect(await db.property.findUniqueOrThrow({ where: { id: typed.propertyId! } })).toMatchObject({ lat: 39.1, lng: -84.5 });
   });
 });
 

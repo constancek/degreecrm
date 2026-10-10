@@ -7,6 +7,7 @@ import type { Prisma } from "@/generated/prisma/client";
 import { ForbiddenError, NotFoundError, ValidationError, isOwner, type Actor } from "./actor";
 import { recordActivity } from "./activity";
 import { enqueueDiscord, flushOutboxSoon } from "./outbox";
+import { geocodePropertySoon } from "./geocode";
 import {
   createLeadInput,
   noteInput,
@@ -78,7 +79,12 @@ async function findOrCreateProperty(
   const existing = await tx.property.findFirst({
     where: { customerId, street: { equals: input.street, mode: "insensitive" }, unit: input.unit ?? null },
   });
-  if (existing) return existing;
+  if (existing) {
+    if (existing.lat == null && input.lat != null && input.lng != null) {
+      return tx.property.update({ where: { id: existing.id }, data: { lat: input.lat, lng: input.lng } });
+    }
+    return existing;
+  }
   return tx.property.create({
     data: {
       customerId,
@@ -88,6 +94,8 @@ async function findOrCreateProperty(
       state: (input.state ?? "OH").toUpperCase(),
       zip: input.zip,
       notes: input.notes,
+      lat: input.lat,
+      lng: input.lng,
     },
   });
 }
@@ -146,6 +154,7 @@ export async function createLead(actor: Actor, raw: CreateLeadInput) {
   });
 
   await flushOutboxSoon();
+  if (lead.propertyId) await geocodePropertySoon(lead.propertyId);
   return lead;
 }
 

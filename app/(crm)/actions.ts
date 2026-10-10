@@ -42,8 +42,11 @@ export async function createLeadAction(_prev: FormState, fd: FormData): Promise<
             street: str(fd, "street")!,
             unit: str(fd, "unit"),
             city: str(fd, "city"),
+            state: str(fd, "state"),
             zip: str(fd, "zip"),
             notes: str(fd, "propertyNotes"),
+            lat: str(fd, "lat") || undefined,
+            lng: str(fd, "lng") || undefined,
           }
         : undefined,
       title: str(fd, "title") ?? "",

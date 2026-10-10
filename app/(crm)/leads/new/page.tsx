@@ -11,7 +11,11 @@ export default async function NewLeadPage() {
   return (
     <div className="mx-auto w-full max-w-3xl p-4">
       <h1 className="mb-4 text-lg font-semibold">New lead</h1>
-      <NewLeadForm staff={staff.map((s) => ({ id: s.id, name: s.name }))} canAssign={user.role === "owner"} />
+      <NewLeadForm
+        staff={staff.map((s) => ({ id: s.id, name: s.name }))}
+        canAssign={user.role === "owner"}
+        mapsKey={process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || undefined}
+      />
     </div>
   );
 }

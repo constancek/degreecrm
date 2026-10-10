@@ -3,8 +3,17 @@
 import { useActionState } from "react";
 import { SOURCES, TRADES } from "@/lib/stages";
 import { createLeadAction } from "../../actions";
+import { AddressFields } from "./address-fields";
 
-export function NewLeadForm({ staff, canAssign }: { staff: { id: string; name: string }[]; canAssign: boolean }) {
+export function NewLeadForm({
+  staff,
+  canAssign,
+  mapsKey,
+}: {
+  staff: { id: string; name: string }[];
+  canAssign: boolean;
+  mapsKey?: string;
+}) {
   const [state, action, pending] = useActionState(createLeadAction, undefined);
 
   return (
@@ -47,30 +56,7 @@ export function NewLeadForm({ staff, canAssign }: { staff: { id: string; name: s
 
       <fieldset className="card grid gap-4 p-4 sm:grid-cols-6">
         <legend className="px-1 text-sm font-semibold">Property</legend>
-        <div className="sm:col-span-4">
-          <label className="label" htmlFor="street">
-            Street address
-          </label>
-          <input id="street" name="street" className="input" />
-        </div>
-        <div className="sm:col-span-2">
-          <label className="label" htmlFor="unit">
-            Unit
-          </label>
-          <input id="unit" name="unit" className="input" />
-        </div>
-        <div className="sm:col-span-4">
-          <label className="label" htmlFor="city">
-            City
-          </label>
-          <input id="city" name="city" className="input" defaultValue="Cincinnati" />
-        </div>
-        <div className="sm:col-span-2">
-          <label className="label" htmlFor="zip">
-            ZIP
-          </label>
-          <input id="zip" name="zip" className="input" inputMode="numeric" />
-        </div>
+        <AddressFields apiKey={mapsKey} />
         <div className="sm:col-span-6">
           <label className="label" htmlFor="propertyNotes">
             Access / equipment notes

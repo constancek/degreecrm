@@ -23,6 +23,8 @@ export const propertyInput = z.object({
   state: optionalText(2),
   zip: optionalText(10),
   notes: optionalText(2000),
+  lat: z.coerce.number().min(-90).max(90).optional(),
+  lng: z.coerce.number().min(-180).max(180).optional(),
 });
 
 export const createLeadInput = z
