@@ -7,6 +7,7 @@ import { processOutbox } from "@/lib/services/outbox";
 import { submitWebLead } from "@/lib/services/intake";
 import { isAllowedToSignIn, upsertStaffUser } from "@/lib/services/users";
 import { runTick } from "@/lib/jobs/tick";
+import { setDiscordStages } from "@/lib/services/settings";
 import { ForbiddenError, NotFoundError } from "@/lib/services/actor";
 import { exchangeToken, issueAuthorizationCode, registerClient, validateAuthorizeRequest, verifyAccessToken } from "@/lib/oauth/server";
 import { pkceChallenge } from "@/lib/crypto";
@@ -77,6 +78,19 @@ describe("leads", () => {
     const full = await getLead(owner, lead.id);
     expect(full.activities.filter((a) => a.type === "stage_changed")).toHaveLength(2);
     expect(full.activities[0]!.body).toBe("Booked for Tue 9am");
+  });
+
+  it("respects the owner's Discord stage toggles", async () => {
+    const owner = await makeUser("owner", "owner@test.dev");
+    const tech = await makeUser("tech", "tech@test.dev");
+    await expect(setDiscordStages(tech, [])).rejects.toBeInstanceOf(ForbiddenError);
+    await setDiscordStages(owner, ["job_scheduled"]);
+
+    const lead = await createLead(owner, baseLead); // "new" no longer posts
+    await changeStage(owner, lead.id, "estimate_scheduled"); // nor this
+    await changeStage(owner, lead.id, "job_scheduled");
+    await processOutbox();
+    expect(discord.sent.map((m) => m.embeds![0]!.title)).toEqual(["Job scheduled: No heat"]);
   });
 
   it("retries Discord failures with backoff", async () => {

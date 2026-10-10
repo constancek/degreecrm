@@ -3,7 +3,7 @@ import type { StaffActor } from "@/lib/session";
 
 export async function resetDb() {
   await db.$executeRawUnsafe(
-    `TRUNCATE "Activity", "OutboxEvent", "OAuthToken", "OAuthCode", "OAuthClient", "Lead", "Property", "Customer", "User" CASCADE`,
+    `TRUNCATE "Setting", "Activity", "OutboxEvent", "OAuthToken", "OAuthCode", "OAuthClient", "Lead", "Property", "Customer", "User" CASCADE`,
   );
 }
 

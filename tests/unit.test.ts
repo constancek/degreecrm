@@ -6,6 +6,7 @@ import { guessTrade, mapJotform } from "@/lib/services/intake";
 import { leadStageEmbed } from "@/lib/notifications/discord-embeds";
 import { isAllowedRedirectUri } from "@/lib/oauth/server";
 import { STAGES } from "@/lib/stages";
+import { normalizeSslMode } from "@/lib/db";
 
 describe("phone", () => {
   it("normalizes US numbers to E.164", () => {
@@ -107,5 +108,14 @@ describe("pipeline + discord", () => {
     expect(embed.title).toBe("Estimate scheduled: No heat");
     expect(embed.url).toBe("https://app.test/leads/lead1");
     expect(embed.fields!.find((f) => f.name === "Address")!.value).toContain("google.com/maps");
+  });
+});
+
+describe("database url", () => {
+  it("upgrades sslmode=require to verify-full and leaves other URLs alone", () => {
+    expect(normalizeSslMode("postgresql://u:p@h/db?sslmode=require&channel_binding=require")).toBe(
+      "postgresql://u:p@h/db?sslmode=verify-full&channel_binding=require",
+    );
+    expect(normalizeSslMode("postgresql://u:p@localhost:54329/db")).toBe("postgresql://u:p@localhost:54329/db");
   });
 });

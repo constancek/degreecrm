@@ -1,5 +1,13 @@
 # Changelog
 
+## Phase 1 follow-ups (2026-10-09)
+
+- Deployed to Vercel (`degreecrm`) with Neon Postgres (iad1), a private Vercel Blob store, and app./go. domains.
+- New-lead form: Google Places (New) address suggestions fill street/unit/city/state/ZIP and coordinates;
+  properties without coordinates are geocoded once on the server (`GOOGLE_MAPS_API_KEY`).
+- Settings: the owner chooses which stages post to Discord (`Setting` model).
+- `DATA_ENCRYPTION_KEY` accepts hex or base64; database URLs use `sslmode=verify-full`.
+
 ## Phase 1: Foundation (2026-10-09)
 
 - Next.js 16 + Prisma 7 + Postgres app, set up for Vercel (Vercel Cron every minute) with a portable `npm run worker`.

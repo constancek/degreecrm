@@ -230,3 +230,11 @@ model OAuthToken {
 
   @@index([userId])
 }
+
+/// Owner-editable settings (key → JSON), e.g. "discord.stages".
+model Setting {
+  key       String   @id
+  value     Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}

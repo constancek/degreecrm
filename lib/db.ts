@@ -4,8 +4,16 @@ import { PrismaClient } from "@/generated/prisma/client";
 // One client per process (web, worker, seed). Reused across hot reloads in dev.
 const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
 
+/**
+ * Neon URLs say sslmode=require, which pg 8 already treats as verify-full and warns about.
+ * Say verify-full explicitly (Neon's certificates are publicly trusted).
+ */
+export function normalizeSslMode(url: string | undefined): string | undefined {
+  return url?.replace(/([?&]sslmode=)(prefer|require|verify-ca)(?=&|$)/, "$1verify-full");
+}
+
 function createClient() {
-  const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
+  const adapter = new PrismaPg({ connectionString: normalizeSslMode(process.env.DATABASE_URL) });
   return new PrismaClient({ adapter });
 }
 

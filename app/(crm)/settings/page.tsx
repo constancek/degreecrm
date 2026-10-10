@@ -5,13 +5,16 @@ import { appUrl } from "@/lib/env";
 import { formatDateTime } from "@/lib/format";
 import { requireUser } from "@/lib/session";
 import { listActiveStaff } from "@/lib/services/users";
+import { getDiscordStages, setDiscordStages } from "@/lib/services/settings";
+import { STAGES } from "@/lib/stages";
 
 export const metadata: Metadata = { title: "Settings" };
 
 export default async function SettingsPage() {
   const user = await requireUser();
-  const [staff, connections] = await Promise.all([
+  const [staff, discordStages, connections] = await Promise.all([
     user.role === "owner" ? listActiveStaff() : Promise.resolve([]),
+    getDiscordStages(),
     db.oAuthToken.findMany({
       where: { userId: user.id, revokedAt: null, refreshExpiresAt: { gt: new Date() } },
       include: { client: true },
@@ -26,6 +29,13 @@ export default async function SettingsPage() {
       where: { userId: me.id, clientId: String(formData.get("clientId")), revokedAt: null },
       data: { revokedAt: new Date() },
     });
+    revalidatePath("/settings");
+  }
+
+  async function saveDiscord(formData: FormData) {
+    "use server";
+    const me = await requireUser();
+    await setDiscordStages(me, formData.getAll("stage").map(String));
     revalidatePath("/settings");
   }
 
@@ -63,6 +73,24 @@ export default async function SettingsPage() {
           </ul>
         )}
       </section>
+
+      {user.role === "owner" && (
+        <section className="card p-4">
+          <h2 className="font-semibold">Discord: #degree-service-call</h2>
+          <p className="mt-1 text-sm text-gray-600">Post to the channel when a lead enters these stages.</p>
+          <form action={saveDiscord} className="mt-3">
+            <div className="grid gap-2 sm:grid-cols-2">
+              {STAGES.map((s) => (
+                <label key={s.id} className="flex items-center gap-2 text-sm">
+                  <input type="checkbox" name="stage" value={s.id} defaultChecked={discordStages.has(s.id)} />
+                  {s.label}
+                </label>
+              ))}
+            </div>
+            <button className="btn-secondary mt-3">Save</button>
+          </form>
+        </section>
+      )}
 
       {user.role === "owner" && (
         <section className="card p-4">

@@ -1,6 +1,5 @@
 import { db, type Tx } from "@/lib/db";
 import { normalizeEmail, normalizePhone } from "@/lib/phone";
-import { stageInfo } from "@/lib/stages";
 import { leadStageEmbed } from "@/lib/notifications/discord-embeds";
 import type { LeadStage } from "@/generated/prisma/enums";
 import type { Prisma } from "@/generated/prisma/client";
@@ -8,6 +7,7 @@ import { ForbiddenError, NotFoundError, ValidationError, isOwner, type Actor } f
 import { recordActivity } from "./activity";
 import { enqueueDiscord, flushOutboxSoon } from "./outbox";
 import { geocodePropertySoon } from "./geocode";
+import { getDiscordStages } from "./settings";
 import {
   createLeadInput,
   noteInput,
@@ -149,7 +149,9 @@ export async function createLead(actor: Actor, raw: CreateLeadInput) {
       customerId,
       data: { source: input.source },
     });
-    await enqueueDiscord(tx, leadStageEmbed(created, { by: actorName(actor) }));
+    if ((await getDiscordStages(tx)).has("new")) {
+      await enqueueDiscord(tx, leadStageEmbed(created, { by: actorName(actor) }));
+    }
     return created;
   });
 
@@ -236,7 +238,7 @@ export async function changeStage(
       body: lostReason,
       data: { from: lead.stage, to: stage },
     });
-    if (stageInfo(stage).discord) {
+    if ((await getDiscordStages(tx)).has(stage)) {
       await enqueueDiscord(tx, leadStageEmbed(updated, { by: actorName(actor) }));
     }
     return updated;
