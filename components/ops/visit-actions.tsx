@@ -203,8 +203,8 @@ export function VisitActions(props: {
         </div>
       )}
 
-      {msg?.error && <p className="text-sm text-red-700">{msg.error}</p>}
-      {msg?.ok && !msg.error && <p className="text-sm text-green-700">{msg.ok}</p>}
+      {msg?.error && <p role="alert" className="text-sm text-red-700">{msg.error}</p>}
+      {msg?.ok && !msg.error && <p role="status" className="text-sm text-green-700">{msg.ok}</p>}
     </div>
   );
 }

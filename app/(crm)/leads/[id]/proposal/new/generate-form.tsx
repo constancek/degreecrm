@@ -43,7 +43,7 @@ export function GenerateForm({ leadId, trade }: { leadId: string; trade: Trade }
 
   return (
     <form action={submit} className="mt-4 space-y-4">
-      {state?.error && <p className="rounded-md bg-red-50 p-3 text-sm text-red-700">{state.error}</p>}
+      {state?.error && <p role="alert" className="rounded-md bg-red-50 p-3 text-sm text-red-700">{state.error}</p>}
       <div className="card space-y-4 p-4">
         <div>
           <label className="label" htmlFor="trade">
@@ -110,7 +110,7 @@ export function GenerateForm({ leadId, trade }: { leadId: string; trade: Trade }
         >
           Start blank instead
         </button>
-        {blankError && <p className="text-sm text-red-700">{blankError}</p>}
+        {blankError && <p role="alert" className="text-sm text-red-700">{blankError}</p>}
       </div>
     </form>
   );

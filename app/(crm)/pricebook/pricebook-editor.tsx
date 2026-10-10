@@ -82,11 +82,11 @@ export function PriceBookEditor({ items, canEdit, showInactive }: { items: Item[
             </thead>
             <tbody>
               {filtered.map((i) => (
-                <tr key={i.id} className={`border-t ${i.active ? "" : "text-gray-400"}`}>
+                <tr key={i.id} className={`border-t ${i.active ? "" : "text-gray-500"}`}>
                   <td className="px-3 py-2">
                     <div className="font-medium">{i.name}</div>
                     {i.description && <div className="text-xs text-gray-500">{i.description}</div>}
-                    {i.sku && <div className="text-xs text-gray-400">SKU {i.sku}</div>}
+                    {i.sku && <div className="text-xs text-gray-500">SKU {i.sku}</div>}
                   </td>
                   <td className="px-3 py-2">{i.trade ? tradeLabel(i.trade) : "All"}</td>
                   <td className="px-3 py-2 capitalize">{i.category}</td>
@@ -191,7 +191,7 @@ function ItemForm({ item, onDone }: { item: Item | null; onDone: () => void }) {
         <button type="button" className="btn-secondary" onClick={onDone}>
           Cancel
         </button>
-        {state?.error && <p className="text-sm text-red-700">{state.error}</p>}
+        {state?.error && <p role="alert" className="text-sm text-red-700">{state.error}</p>}
       </div>
     </form>
   );

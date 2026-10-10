@@ -6,7 +6,7 @@ import type { LeadSource, LeadStage, Trade } from "@/generated/prisma/enums";
 import { assignAction, noteAction, stageFormAction, updateLeadAction } from "../../actions";
 
 function ErrorText({ error }: { error?: string }) {
-  return error ? <p className="mt-2 text-sm text-red-700">{error}</p> : null;
+  return error ? <p role="alert" className="mt-2 text-sm text-red-700">{error}</p> : null;
 }
 
 export function StageForm({ leadId, stage }: { leadId: string; stage: LeadStage }) {

@@ -60,6 +60,14 @@ export function SignaturePad({ name, onChange }: { name: string; onChange: (v: S
     onChange({ type: "drawn", dataUrl: out.toDataURL("image/png") });
   }
 
+  /** Ends a stroke on lift, and also when the OS interrupts it (scroll, palm rejection, notification). */
+  function endStroke() {
+    if (!drawing.current) return;
+    drawing.current = false;
+    last.current = null;
+    if (strokes.current > 5) exportImage();
+  }
+
   function clear() {
     const c = canvas.current!;
     c.getContext("2d")!.clearRect(0, 0, c.width, c.height);
@@ -102,14 +110,12 @@ export function SignaturePad({ name, onChange }: { name: string; onChange: (v: S
               last.current = p;
               strokes.current++;
             }}
-            onPointerUp={() => {
-              drawing.current = false;
-              last.current = null;
-              if (strokes.current > 5) exportImage();
-            }}
+            onPointerUp={endStroke}
+            onPointerCancel={endStroke}
+            onLostPointerCapture={endStroke}
           />
-          <span className="pointer-events-none absolute bottom-2 left-3 text-xs text-gray-400">Sign here with your finger or mouse</span>
-          <button type="button" className="absolute top-2 right-3 text-xs text-gray-500 underline" onClick={clear}>
+          <span className="pointer-events-none absolute bottom-2 left-3 text-sm text-gray-500">Sign here with your finger or mouse</span>
+          <button type="button" className="absolute top-1 right-1 min-h-11 rounded-md px-3 text-sm text-gray-600 underline hover:bg-gray-100" onClick={clear}>
             Clear
           </button>
         </div>

@@ -17,6 +17,7 @@ import { changeStageAction, planStageMoveAction } from "../actions";
 import { useRouter } from "next/navigation";
 import { StageMoveDialog } from "./stage-move-dialog";
 import type { StagePlan } from "@/lib/services/stage-moves";
+import { ChevronLeft } from "@/components/ui/icons";
 
 export type BoardLead = {
   id: string;
@@ -102,7 +103,7 @@ export function PipelineBoard({ leads, showLost }: { leads: BoardLead[]; showLos
 
   return (
     <>
-      {error && <p className="mx-4 mb-2 rounded-md bg-red-50 p-2 text-sm text-red-700">{error}</p>}
+      {error && <p role="alert" className="mx-4 mb-2 rounded-md bg-red-50 p-2 text-sm text-red-700">{error}</p>}
       <DndContext id={dndId} sensors={sensors} onDragStart={markDragged} onDragEnd={(e) => {
           markDragged();
           onDragEnd(e);
@@ -177,11 +178,11 @@ function Column({
       aria-label={label}
       className={`flex w-60 shrink-0 flex-col rounded-lg border bg-gray-100/80 ${isOver ? "border-brand ring-2 ring-brand/20" : "border-gray-200"}`}
     >
-      <header className="flex items-baseline justify-between gap-2 px-3 pt-3 pb-2" title={hint}>
+      <header className="flex items-center justify-between gap-2 px-3 pt-3 pb-2" title={hint}>
         <h2 className="text-sm font-semibold text-gray-800">{label}</h2>
         <span className="ml-auto text-xs text-gray-500">{leads.length}</span>
-        <button type="button" onClick={onToggle} className="rounded px-1 text-gray-400 hover:bg-gray-200 hover:text-gray-700" aria-label={`Collapse ${label}`} title="Collapse">
-          ‹
+        <button type="button" onClick={onToggle} className="icon-btn -my-1 -mr-1 hover:bg-gray-200" aria-label={`Collapse ${label}`} title="Collapse">
+          <ChevronLeft />
         </button>
       </header>
       <div className="flex min-h-24 flex-1 flex-col gap-2 px-2 pb-2">
@@ -213,7 +214,7 @@ function Card({ lead }: { lead: BoardLead }) {
       {lead.requested && <p className="mt-1 text-xs font-medium text-amber-700">Requested {lead.requested}</p>}
       {lead.booked && <p className="mt-1 text-xs font-medium text-gray-700">{lead.booked}</p>}
       {(lead.noTech || lead.late || lead.fee) && (
-        <div className="mt-1 flex flex-wrap gap-1 text-[11px] font-medium">
+        <div className="mt-1 flex flex-wrap gap-1 text-xs font-medium">
           {lead.noTech && <span className="rounded bg-red-100 px-1.5 py-0.5 text-red-800">No tech</span>}
           {lead.late && <span className="rounded bg-amber-100 px-1.5 py-0.5 text-amber-800">Late · ~{lead.late}</span>}
           {lead.fee && <span className="rounded bg-gray-100 px-1.5 py-0.5 text-gray-700">{lead.fee}</span>}
@@ -221,16 +222,16 @@ function Card({ lead }: { lead: BoardLead }) {
       )}
       <div className="mt-2 flex items-center gap-2 text-xs">
         <span className={`rounded px-1.5 py-0.5 font-medium ${TRADE_COLORS[lead.trade]}`}>{tradeLabel(lead.trade)}</span>
-        <span className="text-gray-400">{timeAgo(lead.stageChangedAt)}</span>
+        <span className="text-gray-500">{timeAgo(lead.stageChangedAt)}</span>
         {lead.assignee ? (
           <span
             title={lead.assignee}
-            className="ml-auto flex h-6 w-6 items-center justify-center rounded-full bg-brand text-[10px] font-semibold text-white"
+            className="ml-auto flex h-7 w-7 items-center justify-center rounded-full bg-brand text-[11px] font-semibold text-white"
           >
             {initials(lead.assignee)}
           </span>
         ) : (
-          <span className="ml-auto text-gray-400">Unassigned</span>
+          <span className="ml-auto text-gray-500">Unassigned</span>
         )}
       </div>
     </div>

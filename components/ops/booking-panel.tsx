@@ -92,8 +92,8 @@ export function BookingPanel(props: {
             <button className="btn-primary sm:col-span-2" disabled={confirming}>
               {confirming ? "Booking…" : tech ? "Confirm & text customer" : "Book without a tech"}
             </button>
-            {confirmState?.error && <p className="text-red-700 sm:col-span-2">{confirmState.error}</p>}
-            {confirmState?.ok && <p className="text-green-700 sm:col-span-2">{confirmState.ok}</p>}
+            {confirmState?.error && <p role="alert" className="text-red-700 sm:col-span-2">{confirmState.error}</p>}
+            {confirmState?.ok && <p role="status" className="text-green-700 sm:col-span-2">{confirmState.ok}</p>}
           </form>
           <details className="mt-3 text-sm">
             <summary className="cursor-pointer text-gray-600">Decline</summary>
@@ -102,7 +102,7 @@ export function BookingPanel(props: {
               <button className="btn-secondary" disabled={declining}>
                 Decline request
               </button>
-              {declineState?.error && <p className="text-red-700">{declineState.error}</p>}
+              {declineState?.error && <p role="alert" className="text-red-700">{declineState.error}</p>}
             </form>
           </details>
         </>

@@ -38,7 +38,7 @@ export function JobDurationForm({ jobId, hours }: { jobId: string; hours: number
       <button className="btn-secondary" disabled={pending}>
         Save
       </button>
-      {state?.error && <p className="text-red-700">{state.error}</p>}
+      {state?.error && <p role="alert" className="text-red-700">{state.error}</p>}
     </form>
   );
 }

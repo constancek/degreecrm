@@ -5,6 +5,8 @@ import { SOURCES, TRADES } from "@/lib/stages";
 import { AddressFields } from "../leads/new/address-fields";
 import { ArrivalFields, TechField } from "@/components/ops/visit-fields";
 import { createAppointmentAction, lookupLeadsAction, type LeadOption } from "./actions";
+import { useDialog } from "@/lib/client/use-dialog";
+import { Close } from "@/components/ui/icons";
 
 export type AppointmentDefaults = { date: string; time: string; techId: string };
 
@@ -56,11 +58,7 @@ export function NewAppointmentDialog({
     if (state?.ok) onBooked();
   }, [state, onBooked]);
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  const panel = useDialog<HTMLDivElement>(onClose);
 
   // Live lead search (debounced; stale answers are dropped).
   useEffect(() => {
@@ -82,6 +80,8 @@ export function NewAppointmentDialog({
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 sm:items-center sm:p-4" onClick={onClose}>
       <div
+        ref={panel}
+        tabIndex={-1}
         role="dialog"
         aria-modal="true"
         aria-labelledby="new-appt-title"
@@ -92,13 +92,13 @@ export function NewAppointmentDialog({
           <h2 id="new-appt-title" className="text-lg font-semibold">
             New appointment
           </h2>
-          <button type="button" className="rounded px-2 text-2xl leading-none text-gray-500 hover:bg-gray-100" onClick={onClose} aria-label="Close">
-            ×
+          <button type="button" className="icon-btn" onClick={onClose} aria-label="Close">
+            <Close className="size-5" />
           </button>
         </div>
 
         <form action={action} className="mt-4 space-y-5">
-          {state?.error && <p className="rounded-md bg-red-50 p-3 text-sm text-red-700">{state.error}</p>}
+          {state?.error && <p role="alert" className="rounded-md bg-red-50 p-3 text-sm text-red-700">{state.error}</p>}
           <input type="hidden" name="kind" value={kind} />
           <input type="hidden" name="customerMode" value={mode} />
           <input type="hidden" name="leadId" value={mode === "existing" ? (lead?.id ?? "") : ""} />

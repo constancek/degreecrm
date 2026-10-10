@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { saveSequenceAction } from "../../ops-actions";
+import { Close } from "@/components/ui/icons";
 
 type Step = { anchor: string; offsetHours: number; template: string; personalize: boolean };
 
@@ -50,12 +51,12 @@ export function SequenceEditor({ id, triggerLabel, initial }: { id: string; trig
               <label className="ml-auto flex items-center gap-1 text-xs text-gray-600">
                 <input type="checkbox" checked={st.personalize} onChange={(e) => update(i, { personalize: e.target.checked })} /> Let Claude personalize
               </label>
-              <button className="text-red-700" aria-label="Remove text" onClick={() => setSeq({ ...seq, steps: seq.steps.filter((_, j) => j !== i) })}>
-                ✕
+              <button className="icon-btn hover:text-red-700" aria-label="Remove text" onClick={() => setSeq({ ...seq, steps: seq.steps.filter((_, j) => j !== i) })}>
+                <Close />
               </button>
             </div>
             <textarea className="input mt-2 min-h-16 text-sm" value={st.template} onChange={(e) => update(i, { template: e.target.value })} aria-label="Message" />
-            <p className="text-right text-xs text-gray-400">{st.template.length} characters</p>
+            <p className="text-right text-xs text-gray-500">{st.template.length} characters</p>
           </li>
         ))}
       </ol>

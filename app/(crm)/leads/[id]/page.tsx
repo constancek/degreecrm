@@ -235,7 +235,7 @@ export default async function LeadPage({ params }: PageProps<"/leads/[id]">) {
                   )}
                 </p>
                 {a.body && <p className="mt-0.5 whitespace-pre-wrap text-gray-600">{a.body}</p>}
-                <p className="text-xs text-gray-400" title={formatDateTime(a.createdAt)}>
+                <p className="text-xs text-gray-500" title={formatDateTime(a.createdAt)}>
                   {timeAgo(a.createdAt)}
                 </p>
               </li>

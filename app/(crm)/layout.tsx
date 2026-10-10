@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { signOut } from "@/lib/auth";
 import { requireUser } from "@/lib/session";
+import { Plus } from "@/components/ui/icons";
 
 export default async function CrmLayout({ children }: LayoutProps<"/">) {
   const user = await requireUser();
@@ -36,7 +37,7 @@ export default async function CrmLayout({ children }: LayoutProps<"/">) {
             <Link href="/my-day" className="hover:text-white">
               My day
             </Link>
-            <Link href="/pricebook" className="hidden hover:text-white lg:inline">
+            <Link href="/pricebook" className="hover:text-white">
               Price book
             </Link>
             <Link href="/settings" className="hover:text-white">
@@ -44,8 +45,9 @@ export default async function CrmLayout({ children }: LayoutProps<"/">) {
             </Link>
           </nav>
           <div className="ml-auto flex shrink-0 items-center gap-3 text-sm">
-            <Link href="/leads/new" className="hidden rounded-md bg-white/15 px-3 py-1.5 font-medium whitespace-nowrap text-white hover:bg-white/25 md:inline-block">
-              + New lead
+            <Link href="/leads/new" className="inline-flex min-h-9 items-center gap-1 rounded-md bg-white/15 px-2.5 font-medium whitespace-nowrap text-white hover:bg-white/25 md:px-3" aria-label="New lead">
+              <Plus />
+              <span className="hidden md:inline">New lead</span>
             </Link>
             <span className="hidden whitespace-nowrap text-white/80 xl:inline">
               {user.name} · {user.role}

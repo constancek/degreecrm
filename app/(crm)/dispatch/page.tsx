@@ -7,7 +7,7 @@ import { arrivalLabel, arrivalOf, dateLabel, windowLabel } from "@/lib/booking";
 
 export const metadata: Metadata = { title: "Dispatch" };
 
-const COLORS = ["#2563eb", "#ea580c", "#16a34a", "#9333ea", "#db2777", "#0891b2", "#ca8a04"];
+const COLORS = ["#1d4ed8", "#c2410c", "#15803d", "#7e22ce", "#be185d", "#0e7490", "#a16207"]; // 700 steps: readable as text on white
 
 export default async function DispatchPage({ searchParams }: PageProps<"/dispatch">) {
   const user = await requireOwner();

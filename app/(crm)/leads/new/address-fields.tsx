@@ -189,7 +189,7 @@ export function AddressFields({ apiKey }: { apiKey?: string }) {
                 <span className="text-gray-500">{s.secondary}</span>
               </li>
             ))}
-            <li className="px-3 py-1 text-right text-[10px] text-gray-400">Powered by Google</li>
+            <li className="px-3 py-1 text-right text-xs text-gray-500">Powered by Google</li>
           </ul>
         )}
       </div>

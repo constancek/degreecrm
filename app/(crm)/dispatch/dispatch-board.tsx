@@ -156,7 +156,7 @@ export function DispatchBoard(props: {
           </Link>
         </div>
       </div>
-      {error && <p className="mx-4 mb-2 rounded-md bg-red-50 p-2 text-sm text-red-700">{error}</p>}
+      {error && <p role="alert" className="mx-4 mb-2 rounded-md bg-red-50 p-2 text-sm text-red-700">{error}</p>}
       {pending && <p className="mx-4 mb-2 text-xs text-gray-500">Saving…</p>}
 
       {/* Drop where the pointer is (not where the card overlaps most), so the time is where you let go. */}
@@ -206,7 +206,7 @@ function UnscheduledCard({ item }: { item: Unscheduled }) {
     >
       <p className="font-medium">{item.customer}</p>
       <p className="text-gray-600">{item.title}</p>
-      <p className="text-gray-400">
+      <p className="text-gray-500">
         {item.kind === "job" ? "Job" : "Service call"} · {item.minutes / 60} h{item.address ? ` · ${item.address.split(",")[0]}` : ""}
       </p>
       {item.requested && <p className={`mt-0.5 font-medium ${item.visitId ? "text-red-700" : "text-amber-700"}`}>{item.visitId ? `Booked ${item.requested} · needs a tech` : `Requested ${item.requested}`}</p>}
@@ -230,7 +230,7 @@ function VisitBlock({ v, color, style, compact }: { v: Visit; color: string; sty
       }}
       data-visit={v.id}
       style={{ ...style, borderLeftColor: color, transform: transform ? `translate(${transform.x}px, ${transform.y}px)` : undefined }}
-      className={`cursor-grab overflow-hidden rounded border border-l-4 bg-white px-1.5 py-0.5 text-[11px] leading-tight shadow-sm ${isDragging ? "z-50 shadow-lg" : "z-10"} ${v.status === "done" ? "opacity-60" : ""}`}
+      className={`cursor-grab overflow-hidden rounded border border-l-4 bg-white px-1.5 py-0.5 text-xs leading-tight shadow-sm ${isDragging ? "z-50 shadow-lg" : "z-10"} ${v.status === "done" ? "opacity-60" : ""}`}
       title={`${v.customer} · ${v.title} · ${TIME.format(v.start)}–${TIME.format(v.end)}`}
     >
       <p className="font-semibold">{v.customer}</p>
@@ -263,12 +263,12 @@ function DayGrid({ dayStart, techs, visits, busy, techColor }: { dayStart: numbe
         {techs.map((t) => (
           <div key={t.id} className="border-b border-l p-2 text-sm font-semibold" style={{ color: t.color }}>
             {t.name}
-            {!t.calendar && <span className="ml-1 text-[10px] font-normal text-gray-400">(no calendar)</span>}
+            {!t.calendar && <span className="ml-1 text-xs font-normal text-gray-500">(no calendar)</span>}
           </div>
         ))}
         <div className="relative" style={{ height: ROWS * ROW_PX }}>
           {Array.from({ length: LAST_HOUR - FIRST_HOUR }, (_, h) => (
-            <div key={h} className="absolute right-1 text-[10px] text-gray-400" style={{ top: Math.max(0, h * 4 * ROW_PX - 5) }}>
+            <div key={h} className="absolute right-1 text-xs text-gray-500" style={{ top: Math.max(0, h * 4 * ROW_PX - 5) }}>
               {TIME.format(new Date(gridStart + h * HOUR)).replace(":00", "")}
             </div>
           ))}
@@ -288,7 +288,7 @@ function DayGrid({ dayStart, techs, visits, busy, techColor }: { dayStart: numbe
               .map((b, i) => (
                 <div
                   key={i}
-                  className="pointer-events-none absolute inset-x-1 rounded bg-gray-200/80 text-[10px] text-gray-500"
+                  className="pointer-events-none absolute inset-x-1 rounded bg-gray-200/80 text-xs text-gray-500"
                   style={{ top: top(b.start), height: height(b.start, b.end) }}
                 >
                   &nbsp;Busy
@@ -300,7 +300,7 @@ function DayGrid({ dayStart, techs, visits, busy, techColor }: { dayStart: numbe
                 <VisitBlock
                   key={v.id}
                   v={v}
-                  color={techColor.get(v.techId) ?? "#6b7280"}
+                  color={techColor.get(v.techId) ?? "#4b5563"}
                   style={{ position: "absolute", left: 4, right: 4, top: Math.max(0, top(v.start)), height: height(v.start, v.end) }}
                 />
               ))}
@@ -335,9 +335,9 @@ function WeekGrid({ dayStarts, techs, visits, busy, techColor }: { dayStarts: { 
               return (
                 <Cell key={d.ymd} id={`${t.id}|${d.ms}`} className="min-h-24 space-y-1 border-b border-l p-1">
                   {dayVisits.map((v) => (
-                    <VisitBlock key={v.id} v={v} color={techColor.get(v.techId) ?? "#6b7280"} compact />
+                    <VisitBlock key={v.id} v={v} color={techColor.get(v.techId) ?? "#4b5563"} compact />
                   ))}
-                  {busyHours > 0 && <p className="text-[10px] text-gray-400">{busyHours.toFixed(1)} h busy (Google)</p>}
+                  {busyHours > 0 && <p className="text-xs text-gray-500">{busyHours.toFixed(1)} h busy (Google)</p>}
                 </Cell>
               );
             })}
@@ -365,7 +365,7 @@ function DispatchMap({ mapsKey, visits, techs }: { mapsKey: string | null; visit
         const map = new Map(ref.current, { center: { lat: 39.1031, lng: -84.512 }, zoom: 10, mapId: "DEMO_MAP_ID", disableDefaultUI: true, zoomControl: true });
         const bounds = new google.maps.LatLngBounds();
         for (const v of pins) {
-          const color = techs.find((t) => t.id === v.techId)?.color ?? "#6b7280";
+          const color = techs.find((t) => t.id === v.techId)?.color ?? "#4b5563";
           const pin = new PinElement({ background: color, borderColor: "#ffffff", glyphColor: "#ffffff" });
           const marker = new AdvancedMarkerElement({ map, position: { lat: v.lat!, lng: v.lng! }, content: pin.element, title: `${TIME.format(v.start)} ${v.customer}` });
           marker.addListener("click", () => {
@@ -387,7 +387,7 @@ function DispatchMap({ mapsKey, visits, techs }: { mapsKey: string | null; visit
   if (!mapsKey) return <p className="card p-4 text-sm text-gray-500">Add NEXT_PUBLIC_GOOGLE_MAPS_API_KEY to show the map.</p>;
   return (
     <div className="card overflow-hidden">
-      {error && <p className="p-2 text-sm text-red-700">Map: {error} (enable Maps JavaScript API for the browser key)</p>}
+      {error && <p role="alert" className="p-2 text-sm text-red-700">Map: {error} (enable Maps JavaScript API for the browser key)</p>}
       <div ref={ref} className="h-80 w-full" aria-label="Map of today's visits" />
       {pins.length === 0 && <p className="p-2 text-xs text-gray-500">No mapped visits this day.</p>}
     </div>
@@ -449,7 +449,7 @@ function SlotFinder({ items, onBook }: { items: Unscheduled[]; onBook: (s: SlotR
         {pending ? "Searching…" : "Find next openings"}
       </button>
       {result?.parsed && <p className="text-xs text-gray-500">Searching: {result.parsed}</p>}
-      {result?.error && <p className="text-red-700">{result.error}</p>}
+      {result?.error && <p role="alert" className="text-red-700">{result.error}</p>}
       {result?.slots && (
         <ul className="space-y-1" aria-label="Open slots">
           {result.slots.length === 0 && <li className="text-gray-500">No openings found. Try a longer drive or later dates.</li>}

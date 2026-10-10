@@ -8,6 +8,7 @@ import type { LeadStage } from "@/generated/prisma/enums";
 import type { StagePlan, StageMovePayload } from "@/lib/services/stage-moves";
 import { performStageMoveAction } from "../actions";
 import { DeclineFields, ReasonSelect } from "@/components/ops/visit-fields";
+import { useDialog } from "@/lib/client/use-dialog";
 
 const METHODS = [
   ["check", "Check"],
@@ -48,6 +49,7 @@ export function StageMoveDialog(props: {
   const [pending, start] = useTransition();
   const set = (patch: StageMovePayload) => setP((x) => ({ ...x, ...patch }));
   const label = stageInfo(props.stage).label;
+  const panel = useDialog<HTMLDivElement>(props.onClose);
 
   function submit() {
     setError(null);
@@ -77,8 +79,8 @@ export function StageMoveDialog(props: {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-4 sm:items-center" role="dialog" aria-modal="true" aria-label={`Move to ${label}`}>
-      <div className="card w-full max-w-md space-y-3 p-5 text-sm">
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-4 sm:items-center">
+      <div ref={panel} tabIndex={-1} role="dialog" aria-modal="true" aria-label={`Move to ${label}`} className="card max-h-[95dvh] w-full max-w-md space-y-3 overflow-y-auto p-5 text-sm">
         <h2 className="text-base font-semibold">
           {props.customer} → {label}
         </h2>
@@ -233,7 +235,7 @@ export function StageMoveDialog(props: {
           <p>{plan.hasReviewLink ? "Texts the customer your Google review link." : "No review link is set in Settings, so this only moves the card."}</p>
         )}
 
-        {error && <p className="rounded bg-red-50 p-2 text-red-700">{error}</p>}
+        {error && <p role="alert" className="rounded bg-red-50 p-2 text-red-700">{error}</p>}
         <div className="flex justify-end gap-2 pt-1">
           <button className="btn-secondary" onClick={props.onClose} disabled={pending}>
             Cancel

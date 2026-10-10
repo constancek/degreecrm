@@ -18,7 +18,7 @@ export function NewLeadForm({
 
   return (
     <form action={action} className="space-y-6">
-      {state?.error && <p className="rounded-md bg-red-50 p-3 text-sm text-red-700">{state.error}</p>}
+      {state?.error && <p role="alert" className="rounded-md bg-red-50 p-3 text-sm text-red-700">{state.error}</p>}
 
       <fieldset className="card grid gap-4 p-4 sm:grid-cols-2">
         <legend className="px-1 text-sm font-semibold">Customer</legend>

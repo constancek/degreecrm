@@ -95,7 +95,7 @@ export function VisitList({ visits, canEdit, techs = [], canText = false }: { vi
               {v.outcome && <span className="rounded bg-gray-100 px-1.5 text-xs">{v.outcome}</span>}
               {v.fee && <span className="rounded bg-gray-100 px-1.5 text-xs">{v.fee}</span>}
               {v.techId && (
-                <span className={`text-xs ${v.syncState === "error" ? "text-red-700" : "text-gray-400"}`} title={v.syncError ?? ""}>
+                <span className={`text-xs ${v.syncState === "error" ? "text-red-700" : "text-gray-500"}`} title={v.syncError ?? ""}>
                   {v.syncState === "synced" ? "In Google Calendar" : v.syncState === "skipped" ? "Calendar not connected" : v.syncState === "error" ? "Calendar sync failed" : "Syncing…"}
                 </span>
               )}
@@ -129,7 +129,7 @@ export function VisitList({ visits, canEdit, techs = [], canText = false }: { vi
           </li>
         );
       })}
-      {error && <li className="py-2 text-red-700">{error}</li>}
+      {error && <li role="alert" className="py-2 text-red-700">{error}</li>}
     </ul>
   );
 }
@@ -265,7 +265,7 @@ export function TextThread({ leadId, messages, canText, reason }: { leadId: stri
           <li key={m.id} className={`flex ${m.direction === "out" ? "justify-end" : "justify-start"}`}>
             <div className={`max-w-[80%] rounded-2xl px-3 py-2 text-sm ${m.direction === "out" ? "bg-brand text-white" : "bg-gray-100 text-gray-900"}`}>
               <p className="whitespace-pre-wrap">{m.body}</p>
-              <p className={`mt-0.5 text-[10px] ${m.direction === "out" ? "text-white/70" : "text-gray-500"}`}>
+              <p className={`mt-0.5 text-xs ${m.direction === "out" ? "text-white/80" : "text-gray-500"}`}>
                 {m.when}
                 {m.by ? ` · ${m.by}` : ""}
                 {m.direction === "out" && m.status !== "sent" ? ` · ${m.status}` : ""}

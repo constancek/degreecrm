@@ -170,7 +170,7 @@ function CardForm({ token, amountCents, tokenizeUrl, name }: { token: string; am
         <button className="btn-primary w-full py-3 text-base" disabled={busy}>
           {busy ? "Processing…" : `Pay ${formatCents(amountCents, { cents: true })} deposit`}
         </button>
-        {error && <p className="mt-2 text-sm text-red-700">{error}</p>}
+        {error && <p role="alert" className="mt-2 text-sm text-red-700">{error}</p>}
         <p className="mt-2 text-xs text-gray-500">Payments are processed securely by QuickBooks / Intuit.</p>
       </div>
     </form>

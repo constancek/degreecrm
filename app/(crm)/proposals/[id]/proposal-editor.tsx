@@ -12,6 +12,7 @@ import {
 import { formatCents, lineTotalCents, marginPercent, optionTotals, parseDollars } from "@/lib/money";
 import type { PriceCategory, Tier, Trade } from "@/generated/prisma/enums";
 import { addToPriceBookAction, saveProposalAction } from "../actions";
+import { Close, Grip } from "@/components/ui/icons";
 
 type Line = {
   key: string;
@@ -194,8 +195,8 @@ export function ProposalEditor(props: {
           <button className="btn-primary" onClick={save} disabled={saving || !dirty}>
             {saving ? "Saving…" : dirty ? "Save changes" : "Saved"}
           </button>
-          {message?.error && <p className="text-sm text-red-700">{message.error}</p>}
-          {message?.ok && <p className="text-sm text-green-700">{message.ok}</p>}
+          {message?.error && <p role="alert" className="text-sm text-red-700">{message.error}</p>}
+          {message?.ok && <p role="status" className="text-sm text-green-700">{message.ok}</p>}
           <p className="ml-auto hidden text-xs text-gray-500 sm:block">Drag a line by its ⠿ handle to move it to another option.</p>
         </div>
       )}
@@ -355,8 +356,8 @@ function LineEditor(props: {
     >
       <div className="flex items-start gap-2">
         {!ro && (
-          <button className="cursor-grab px-1 text-gray-400 active:cursor-grabbing" aria-label="Drag to another option" {...listeners} {...attributes}>
-            ⠿
+          <button className="icon-btn cursor-grab touch-none active:cursor-grabbing" aria-label="Drag to another option" {...listeners} {...attributes}>
+            <Grip />
           </button>
         )}
         <input
@@ -367,12 +368,12 @@ function LineEditor(props: {
           onChange={(e) => props.onChange((x) => void (x.description = e.target.value))}
         />
         {!ro && (
-          <button className="px-1 text-gray-400 hover:text-red-700" aria-label="Remove line" onClick={props.onRemove}>
-            ✕
+          <button className="icon-btn hover:text-red-700" aria-label="Remove line" onClick={props.onRemove}>
+            <Close />
           </button>
         )}
       </div>
-      <div className="mt-1 flex flex-wrap items-center gap-2 pl-6">
+      <div className="mt-1 flex flex-wrap items-center gap-2 pl-10">
         <input
           className="input w-16 py-1 text-sm"
           inputMode="decimal"
@@ -436,7 +437,7 @@ function LineEditor(props: {
             Add to price book
           </button>
         )}
-        {saved && <span>{saved}</span>}
+        {saved && <span role="status">{saved}</span>}
       </div>
     </div>
   );

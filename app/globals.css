@@ -3,7 +3,6 @@
 @theme inline {
   --color-brand: #1e3a5f;
   --color-brand-dark: #142a45;
-  --color-accent: #ea580c;
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
@@ -39,6 +38,10 @@ body {
 @utility btn-secondary {
   @apply btn border border-gray-300 bg-white text-gray-800 hover:bg-gray-50;
 }
+/* Icon-only buttons: 32px box, 44px on touch screens (below). Always give them an aria-label. */
+@utility icon-btn {
+  @apply inline-flex size-8 shrink-0 items-center justify-center rounded-md text-gray-500 transition hover:bg-gray-100 hover:text-gray-800 disabled:opacity-50;
+}
 @utility card {
   @apply rounded-lg border border-gray-200 bg-white shadow-sm;
 }
@@ -54,6 +57,10 @@ body {
   .btn,
   .btn-primary,
   .btn-secondary {
+    min-height: 44px;
+  }
+  .icon-btn {
+    min-width: 44px;
     min-height: 44px;
   }
   .input {

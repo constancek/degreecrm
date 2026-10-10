@@ -39,7 +39,7 @@ export function GateForm({ token, kind }: { token: string; kind: "phone" | "emai
       <button className="btn-primary w-full" disabled={pending || state?.locked}>
         {pending ? "Checking…" : "View proposal"}
       </button>
-      {state?.error && <p className="text-sm text-red-700">{state.error}</p>}
+      {state?.error && <p role="alert" className="text-sm text-red-700">{state.error}</p>}
     </form>
   );
 }
@@ -173,7 +173,7 @@ export function ProposalChooser({
         })}
       </section>
 
-      {error && <p className="mt-4 rounded-md bg-red-50 p-3 text-sm text-red-700">{error}</p>}
+      {error && <p role="alert" className="mt-4 rounded-md bg-red-50 p-3 text-sm text-red-700">{error}</p>}
 
       {chosen && (
         <section id="approve" className="mt-8 scroll-mt-4 rounded-xl border border-gray-200 bg-gray-50 p-5">
@@ -260,7 +260,7 @@ export function ProposalChooser({
                     ? "We'll email you a signed copy right away."
                     : "We'll text you a link to your signed copy right away."}
           </p>
-          {error && <p className="mt-2 rounded-md bg-red-50 p-2 text-sm text-red-700">{error}</p>}
+          {error && <p role="alert" className="mt-2 rounded-md bg-red-50 p-2 text-sm text-red-700">{error}</p>}
         </section>
       )}
 

@@ -3,6 +3,7 @@
 import { useActionState, useState } from "react";
 import { formatRate } from "@/lib/money";
 import type { CompanyProfile } from "@/lib/services/company";
+import { Close } from "@/components/ui/icons";
 import {
   removeLogoAction,
   saveCompanyAction,
@@ -13,7 +14,7 @@ import {
 } from "./actions";
 
 function Status({ state }: { state: SettingsState }) {
-  if (state?.error) return <p className="text-sm text-red-700">{state.error}</p>;
+  if (state?.error) return <p role="alert" className="text-sm text-red-700">{state.error}</p>;
   if (state?.ok) return <p className="text-sm text-green-700">{state.ok}</p>;
   return null;
 }
@@ -217,8 +218,8 @@ export function TaxSettings({ rates }: { rates: { state: string; county: string;
                   <input name="rate" defaultValue={r.rate} className="input w-24" inputMode="decimal" aria-label="Rate percent" />
                 </td>
                 <td className="py-1">
-                  <button type="button" className="text-red-700" aria-label="Remove row" onClick={() => setRows((x) => x.filter((y) => y.key !== r.key))}>
-                    ✕
+                  <button type="button" className="icon-btn hover:text-red-700" aria-label="Remove row" onClick={() => setRows((x) => x.filter((y) => y.key !== r.key))}>
+                    <Close />
                   </button>
                 </td>
               </tr>

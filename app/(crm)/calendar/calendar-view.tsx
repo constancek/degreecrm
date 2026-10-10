@@ -403,7 +403,7 @@ function MonthGrid(props: {
               <div className="flex justify-end">
                 <Link
                   href={props.dayHref(ymd)}
-                  className={`grid size-7 place-items-center rounded-full text-sm ${isToday ? "bg-brand font-semibold text-white" : inMonth ? "text-gray-800 hover:bg-gray-100" : "text-gray-400 hover:bg-gray-100"}`}
+                  className={`grid size-7 place-items-center rounded-full text-sm ${isToday ? "bg-brand font-semibold text-white" : inMonth ? "text-gray-800 hover:bg-gray-100" : "text-gray-500 hover:bg-gray-100"}`}
                 >
                   {Number(ymd.slice(8))}
                 </Link>
@@ -488,7 +488,7 @@ function TimeGrid(props: {
       </div>
       {anyAllDay && (
         <div className="grid border-b" style={{ gridTemplateColumns: cols }}>
-          <div className="px-1 py-1 text-right text-[10px] text-gray-500">all day</div>
+          <div className="px-1 py-1 text-right text-xs text-gray-500">all day</div>
           {props.shown.map(({ ymd }) => (
             <div key={ymd} className="space-y-1 border-l p-1">
               {(props.byDay.get(ymd) ?? [])
@@ -509,7 +509,7 @@ function TimeGrid(props: {
         <div className="grid pt-2" style={{ gridTemplateColumns: cols }}>
           <div>
             {hours.map((h) => (
-              <div key={h} className="relative pr-1 text-right text-[11px] text-gray-500" style={{ height: HOUR_PX }}>
+              <div key={h} className="relative pr-1 text-right text-xs text-gray-500" style={{ height: HOUR_PX }}>
                 <span className="relative -top-2">{h === 0 ? "" : `${((h + 11) % 12) + 1} ${h < 12 ? "am" : "pm"}`}</span>
               </div>
             ))}
@@ -555,8 +555,8 @@ function TimeGrid(props: {
                         {TIME.format(s)} – {TIME.format(en)}
                       </span>
                       <span className="block font-medium">{text}</span>
-                      {sub && height > 40 && <span className="block text-[11px] opacity-80">{sub}</span>}
-                      {item.type === "visit" && item.address && height > 56 && <span className="block truncate text-[11px] opacity-80">{item.address}</span>}
+                      {sub && height > 40 && <span className="block text-xs opacity-80">{sub}</span>}
+                      {item.type === "visit" && item.address && height > 56 && <span className="block truncate text-xs opacity-80">{item.address}</span>}
                     </EventLink>
                   );
                 })}

@@ -48,7 +48,7 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
         <h1 className="text-xl font-semibold text-brand">Degree of Comfort</h1>
         <p className="mt-1 text-sm text-gray-500">Staff sign-in</p>
 
-        {error && <p className="mt-4 rounded-md bg-red-50 p-3 text-sm text-red-700">{error}</p>}
+        {error && <p role="alert" className="mt-4 rounded-md bg-red-50 p-3 text-sm text-red-700">{error}</p>}
 
         {googleEnabled ? (
           <form action={google} className="mt-6">

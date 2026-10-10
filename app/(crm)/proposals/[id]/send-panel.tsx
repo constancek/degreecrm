@@ -28,7 +28,7 @@ export function SendPanel(props: {
       ) : (
         <p className="text-gray-600">Ready to send. The link works for 30 days.</p>
       )}
-      <label className={`flex items-start gap-2 ${canText ? "" : "text-gray-400"}`}>
+      <label className={`flex items-start gap-2 ${canText ? "" : "text-gray-500"}`}>
         <input type="checkbox" checked={textCustomer} disabled={!canText} onChange={(e) => setTextCustomer(e.target.checked)} />
         <span>
           {canText
@@ -46,7 +46,7 @@ export function SendPanel(props: {
         {pending ? "Sending…" : "Send proposal"}
       </button>
       <p className="text-xs text-gray-500">Save your edits first; sending uses the saved version.</p>
-      {result?.error && <p className="text-red-700">{result.error}</p>}
+      {result?.error && <p role="alert" className="text-red-700">{result.error}</p>}
     </section>
   );
 }
@@ -69,7 +69,7 @@ export function ReviseButton({ proposalId }: { proposalId: string }) {
       >
         {pending ? "Creating…" : "Create revision"}
       </button>
-      {error && <p className="text-red-700">{error}</p>}
+      {error && <p role="alert" className="text-red-700">{error}</p>}
     </section>
   );
 }

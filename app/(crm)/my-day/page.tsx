@@ -9,6 +9,7 @@ import { tradeLabel } from "@/lib/stages";
 import { VisitActions } from "@/components/ops/visit-actions";
 import { arrivalLabel, arrivalOf, clock } from "@/lib/booking";
 import { getCompany } from "@/lib/services/company";
+import { ChevronLeft, ChevronRight } from "@/components/ui/icons";
 
 export const metadata: Metadata = { title: "My day" };
 
@@ -25,12 +26,12 @@ export default async function MyDayPage({ searchParams }: PageProps<"/my-day">) 
   return (
     <div className="mx-auto w-full max-w-xl p-4 lg:max-w-5xl">
       <div className="flex items-center justify-between">
-        <Link href={`/my-day?day=${addDaysYmd(ymd, -1)}`} className="px-2 text-brand" aria-label="Previous day">
-          ←
+        <Link href={`/my-day?day=${addDaysYmd(ymd, -1)}`} className="icon-btn text-brand" aria-label="Previous day">
+          <ChevronLeft className="size-5" />
         </Link>
         <h1 className="text-lg font-semibold">{DAY.format(new Date(from.getTime() + 12 * 3_600_000))}</h1>
-        <Link href={`/my-day?day=${addDaysYmd(ymd, 1)}`} className="px-2 text-brand" aria-label="Next day">
-          →
+        <Link href={`/my-day?day=${addDaysYmd(ymd, 1)}`} className="icon-btn text-brand" aria-label="Next day">
+          <ChevronRight className="size-5" />
         </Link>
       </div>
       {visits.length === 0 && <p className="card mt-4 p-6 text-center text-sm text-gray-500">No visits scheduled.</p>}
