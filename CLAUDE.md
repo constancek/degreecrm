@@ -55,6 +55,9 @@ lib/services/signing.ts   built-in e-signature + signed copy; booking.ts request
 lib/jobs/tick.ts          every-minute scheduler (Vercel Cron / npm run worker); each step fails independently
 app/(crm)/ops-actions.ts  server actions for visits, payments, invoices, texts, sequences, slot finder
 app/api/webhooks/*        quo (openphone-signature HMAC), financing (?secret=)
+app/(crm)/calendar        Month/Week/3 Days/Day calendar: CRM visits + each person's Google events (lib/services/calendar.ts),
+                          holidays (lib/holidays.ts), "New appointment" (existing lead or new customer → scheduleVisit)
+app/privacy, app/terms-of-service   public policy pages (both hosts; linked from login, booking form, client pages)
 app/book                  public booking request form (go. host, embeddable: only /book may be framed)
 lib/notifications/*       message builders (Discord embeds)
 prisma/schema.prisma      models; prisma/seed.ts demo data
@@ -99,6 +102,8 @@ e2e/                      Playwright happy paths (production build on :3100 agai
 - Stage moves after signing: signed → estimate_approved; deposit doesn't move the stage (creates the Job); a job visit
   → job_scheduled; Start → job_in_progress; last visit done → job_completed → invoiced → payment_complete →
   review_requested. Drips start/stop in `onLeadStageChanged` (sequences.ts), called from `changeStage`.
+- Calendar page: Google events are read live, never stored. Titles/links only for the viewer's own calendar; others see
+  "Busy" (the privacy policy promises this). CRM-created events (crmVisitId) are skipped there and drawn from the DB.
 - Times: store UTC, show/compute in America/New_York (`easternMidnight`, `easternYmd` in dispatch.ts).
 - Tailwind v4: borders default to gray-200 via a base rule in globals.css (v4's default is currentColor). Shared classes are `@utility` blocks in `app/globals.css` (`input`, `label`, `btn-primary`, `btn-secondary`, `card`).
 

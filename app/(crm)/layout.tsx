@@ -22,6 +22,9 @@ export default async function CrmLayout({ children }: LayoutProps<"/">) {
             <Link href="/pipeline" className="hover:text-white">
               Pipeline
             </Link>
+            <Link href="/calendar" className="hover:text-white">
+              Calendar
+            </Link>
             {user.role === "owner" && (
               <Link href="/dispatch" className="hover:text-white">
                 Dispatch

@@ -22,6 +22,11 @@ export type CalendarEvent = {
   summary: string;
   allDay: boolean;
   transparent: boolean;
+  /** All-day events: Eastern calendar dates "YYYY-MM-DD", end exclusive (as Google returns them). */
+  startDate?: string;
+  endDate?: string;
+  /** Opens the event in Google Calendar. */
+  htmlLink?: string;
 };
 
 export interface CalendarClient {
@@ -30,7 +35,7 @@ export interface CalendarClient {
   deleteEvent(refreshToken: string, eventId: string): Promise<void>;
   /** Events changed since `updatedMin` (includes cancelled ones). */
   listChanged(refreshToken: string, updatedMin: Date): Promise<CalendarEvent[]>;
-  /** Busy events in a window (for the dispatch board). */
+  /** Events in a window (dispatch board busy blocks, the calendar page). */
   listBetween(refreshToken: string, timeMin: Date, timeMax: Date): Promise<CalendarEvent[]>;
 }
 
@@ -68,6 +73,7 @@ type GEvent = {
   status: string;
   summary?: string;
   transparency?: string;
+  htmlLink?: string;
   start?: { dateTime?: string; date?: string };
   end?: { dateTime?: string; date?: string };
   extendedProperties?: { private?: Record<string, string> };
@@ -84,6 +90,9 @@ function toEvent(e: GEvent): CalendarEvent {
     visitId: e.extendedProperties?.private?.crmVisitId ?? null,
     allDay,
     transparent: e.transparency === "transparent",
+    startDate: e.start?.date,
+    endDate: e.end?.date,
+    htmlLink: e.htmlLink,
   };
 }
 
@@ -147,15 +156,22 @@ export function createGoogleCalendarClient(): CalendarClient {
       return out;
     },
     async listBetween(rt, timeMin, timeMax) {
-      const qs = new URLSearchParams({
-        timeMin: timeMin.toISOString(),
-        timeMax: timeMax.toISOString(),
-        singleEvents: "true",
-        orderBy: "startTime",
-        maxResults: "250",
-      });
-      const page = await g<{ items?: GEvent[] }>(rt, `${base}?${qs}`);
-      return (page.items ?? []).map(toEvent).filter((e) => e.status !== "cancelled");
+      const out: CalendarEvent[] = [];
+      let pageToken: string | undefined;
+      do {
+        const qs = new URLSearchParams({
+          timeMin: timeMin.toISOString(),
+          timeMax: timeMax.toISOString(),
+          singleEvents: "true",
+          orderBy: "startTime",
+          maxResults: "250",
+          ...(pageToken ? { pageToken } : {}),
+        });
+        const page = await g<{ items?: GEvent[]; nextPageToken?: string }>(rt, `${base}?${qs}`);
+        out.push(...(page.items ?? []).map(toEvent).filter((e) => e.status !== "cancelled"));
+        pageToken = page.nextPageToken;
+      } while (pageToken && out.length < 2000);
+      return out;
     },
   };
 }

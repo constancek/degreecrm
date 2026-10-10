@@ -1,5 +1,16 @@
 # Changelog
 
+## Calendar, policy pages (2026-10-10)
+
+- **Calendar** (nav → Calendar, everyone): Month / Week / 3 Days / Day views of CRM visits plus your Google Calendar
+  events; filter by event type and person; US holidays toggle. Your own Google events show their titles and open in
+  Google; other people's show as "Busy". Visits open the lead.
+- **New appointment** (owner): book an estimate for an existing lead or a brand-new customer (creates the lead), or a
+  job visit; or click an empty time in Week / 3 Days / Day view. Adds it to the tech's Google Calendar and sends the
+  usual confirmation / reminder texts.
+- Public **Privacy Policy** (/privacy) and **Terms of Service** (/terms-of-service) on both hosts, for Google OAuth
+  verification; common misspellings redirect.
+
 ## iPad, two-choice booking, presenting in person (2026-10-10)
 
 - Booking form always asks for two choices (different from each other), with an optional third; "All day

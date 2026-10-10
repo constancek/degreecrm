@@ -85,12 +85,17 @@ export default async function PrivacyPage() {
           </p>
           <ul>
             <li>create, update and remove events on that person&apos;s calendar for the service visits assigned to them;</li>
-            <li>notice when they move or delete one of those visit events in Google Calendar, so the schedule in the CRM stays the same.</li>
+            <li>notice when they move or delete one of those visit events in Google Calendar, so the schedule in the CRM stays the same;</li>
+            <li>
+              show their other calendar events on their own CRM calendar page, so they can see their whole day in one place, and show the
+              owner when a technician is busy so visits aren&apos;t booked on top of other appointments.
+            </li>
           </ul>
           <p className="mt-3">
-            We only work with the events the CRM itself created. We do not read, copy or store any other events on the calendar. The
-            connection is saved as an encrypted token and can be disconnected at any time in the CRM&apos;s Settings, or from the Google account&apos;s
-            security settings.
+            Other calendar events are read from Google only while the calendar page or dispatch board is open. They are not copied or stored by
+            the CRM. A person&apos;s event titles are shown only to that person; anyone else (such as the owner scheduling visits) sees only
+            &ldquo;Busy&rdquo; and the time. The connection is saved as an encrypted token and can be disconnected at any time in the CRM&apos;s
+            Settings, or from the Google account&apos;s security settings.
           </p>
           <p className="mt-3 rounded-md border-l-4 border-brand bg-gray-50 p-4">
             {company.name}&apos;s use and transfer of information received from Google APIs adheres to the{" "}
