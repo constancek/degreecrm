@@ -58,6 +58,8 @@ app/api/webhooks/*        quo (openphone-signature HMAC), financing (?secret=)
 app/(crm)/calendar        Month/Week/3 Days/Day calendar: CRM visits + each person's Google events (lib/services/calendar.ts),
                           holidays (lib/holidays.ts), "New appointment" (existing lead or new customer → scheduleVisit)
 app/privacy, app/terms-of-service   public policy pages (both hosts; linked from login, booking form, client pages)
+app/(crm)/my-day          tech Today screen + /my-day/[id] appointment page (steps from lib/visit-steps.ts, brief from
+                          lib/services/visit-brief.ts → lib/integrations/rentcast.ts, cached on Property.intel)
 app/book                  public booking request form (go. host, embeddable: only /book may be framed)
 lib/notifications/*       message builders (Discord embeds)
 prisma/schema.prisma      models; prisma/seed.ts demo data
@@ -111,6 +113,8 @@ e2e/                      Playwright happy paths (production build on :3100 agai
 - Calendar page: Google events are read live, never stored. Titles/links only for the viewer's own calendar; others see
   "Busy" (the privacy policy promises this). CRM-created events (crmVisitId) are skipped there and drawn from the DB.
 - Times: store UTC, show/compute in America/New_York (`easternMidnight`, `easternYmd` in dispatch.ts).
+- Techs see only Today + Calendar (+ Account). Office pages use `requireOffice()` (tech → /my-day). A visit's buttons
+  come from `visitPhase()`: only the current step's action plus the exits that fit; don't add buttons outside it.
 - Tailwind v4: borders default to gray-200 via a base rule in globals.css (v4's default is currentColor). Shared classes are `@utility` blocks in `app/globals.css` (`input`, `label`, `btn-primary`, `btn-secondary`, `card`).
 
 ## Commands
@@ -136,4 +140,4 @@ See `.env.example` for all of them with comments. Required in production: `DATAB
 `ALLOWED_EMAILS`, `DATA_ENCRYPTION_KEY`, `CRON_SECRET`, `DISCORD_SERVICE_WEBHOOK_URL`, `INTAKE_ALLOWED_ORIGINS`.
 Phase 2: `ANTHROPIC_API_KEY` (+ optional `ANTHROPIC_MODEL`), `BLOB_READ_WRITE_TOKEN`, `QUO_API_KEY`, `QUO_INBOX_ID`,
 `GOOGLE_MAPS_API_KEY` (server, Geocoding) and `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` (browser, Places).
-Optional: `TURNSTILE_SECRET_KEY`, `INTAKE_WEBHOOK_SECRET`. Never set `E2E_AUTH` or `AI_MOCK` in production.
+Optional: `TURNSTILE_SECRET_KEY`, `INTAKE_WEBHOOK_SECRET`, `RENTCAST_API_KEY` (tech brief property facts). Never set `E2E_AUTH` or `AI_MOCK` in production.

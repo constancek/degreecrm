@@ -4,7 +4,8 @@ export async function login(page: Page, email = "owner@e2e.test") {
   await page.goto("/login");
   await page.getByLabel("Test login (E2E_AUTH)").fill(email);
   await page.getByRole("button", { name: "Sign in without Google" }).click();
-  await expect(page.getByRole("heading", { name: "Pipeline" })).toBeVisible();
+  // Owner lands on the pipeline, a tech on Today.
+  await expect(page.getByRole("heading", { name: /^(Pipeline|Today)$/ })).toBeVisible();
 }
 
 import { createHash, randomBytes } from "node:crypto";

@@ -1,12 +1,12 @@
 import type { Metadata } from "next";
-import { requireUser } from "@/lib/session";
+import { requireOffice } from "@/lib/session";
 import { listPriceBook } from "@/lib/services/pricebook";
 import { PriceBookEditor } from "./pricebook-editor";
 
 export const metadata: Metadata = { title: "Price book" };
 
 export default async function PriceBookPage({ searchParams }: PageProps<"/pricebook">) {
-  const user = await requireUser();
+  const user = await requireOffice();
   const { inactive } = await searchParams;
   const items = await listPriceBook({ includeInactive: inactive === "1" });
   return (

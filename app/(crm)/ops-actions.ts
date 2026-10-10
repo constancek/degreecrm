@@ -17,6 +17,8 @@ import {
   wrapUpVisit,
   type RescheduleReason,
   type WrapUp,
+  customerNotHome,
+  type NoShow,
 } from "@/lib/services/visits";
 import { recordManualDeposit } from "@/lib/services/payments";
 import { createFinalInvoice, recordFinalPayment, updateJob } from "@/lib/services/jobs";
@@ -144,6 +146,19 @@ export async function wrapUpVisitAction(visitId: string, input: WrapUp & { feeDo
     const res = await wrapUpVisit(user, visitId, payload);
     refresh("/pipeline", "/calendar", "/jobs");
     return { ok: "Saved", jobId: "jobId" in res ? res.jobId : undefined };
+  } catch (err) {
+    return fail(err);
+  }
+}
+
+export async function customerNotHomeAction(visitId: string, input: NoShow & { feeDollars?: string }): Promise<Result> {
+  const user = await requireUser();
+  try {
+    const feeCents = input.fee === "none" ? undefined : (parseDollars(input.feeDollars ?? "") ?? undefined);
+    if (input.fee !== "none" && !feeCents) throw new ValidationError("Enter the trip fee");
+    await customerNotHome(user, visitId, { fee: input.fee, feeCents, method: input.method, notifyCustomer: input.notifyCustomer });
+    refresh("/pipeline", "/calendar", "/jobs");
+    return { ok: "Saved. The office will rebook it." };
   } catch (err) {
     return fail(err);
   }

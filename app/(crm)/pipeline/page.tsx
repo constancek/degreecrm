@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { requireUser } from "@/lib/session";
+import { requireOffice } from "@/lib/session";
 import { listBoardLeads } from "@/lib/services/leads";
 import { PipelineBoard, type BoardLead } from "./pipeline-board";
 import { arrivalLabel, arrivalOf, clock, dateLabel, windowLabel } from "@/lib/booking";
@@ -24,7 +24,7 @@ function badges(i: Awaited<ReturnType<typeof boardVisitInfo>> extends Map<string
 }
 
 export default async function PipelinePage({ searchParams }: PageProps<"/pipeline">) {
-  const user = await requireUser();
+  const user = await requireOffice();
   const { lost } = await searchParams;
   const includeLost = lost === "1";
   const leads = await listBoardLeads(user, { includeLost });

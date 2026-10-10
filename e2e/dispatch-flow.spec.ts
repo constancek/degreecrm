@@ -33,25 +33,42 @@ test("service call day: book with a window → tech running late, on the way, on
   const t = await techCtx.newPage();
   await login(t, "tech1@example.com");
   await t.goto(`/my-day?day=${todayEt()}`);
-  const card = t.locator("[data-visit]").filter({ hasText: "Dee Clined" });
-  await expect(card).toContainText("Arrive 9 am – 6 pm");
+  await expect(t.getByRole("heading", { name: "Today" })).toBeVisible();
+  await expect(t.locator("[data-visit]").filter({ hasText: "Dee Clined" })).toContainText("9 am – 6 pm");
+  if (SHOTS) {
+    const phone = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
+    const ph = await phone.newPage();
+    await login(ph, "tech1@example.com");
+    await ph.goto(`/my-day?day=${todayEt()}`);
+    await ph.screenshot({ path: `${SHOTS}/today-phone.png`, fullPage: true });
+    await phone.close();
+  }
+  // Tap the stop → appointment page: steps, buttons and the property brief.
+  await t.getByRole("link", { name: "Dee Clined" }).first().click();
+  await expect(t.getByRole("heading", { name: "Dee Clined" })).toBeVisible();
+  await expect(t.getByRole("heading", { name: "Before you knock" })).toBeVisible();
+  const card = t.locator("[data-visit]");
+  // Nothing past the current step is offered yet.
+  await expect(card.getByRole("link", { name: "Build estimate" })).toHaveCount(0);
 
   await card.getByRole("button", { name: "Running late" }).click();
   await card.getByRole("button", { name: "30 min" }).click();
   await expect(card).toContainText("Running late · customer told about");
 
   await card.getByRole("button", { name: "On my way" }).click();
+  await expect(card.getByRole("button", { name: "Customer not home" })).toBeVisible();
   await card.getByRole("button", { name: "Arrived" }).click();
-  await expect(card.getByRole("button", { name: "Declined – done" })).toBeVisible();
-  if (SHOTS) await t.screenshot({ path: `${SHOTS}/myday-onsite.png` });
+  // On site with no estimate: build one, or leave with just the trip fee. No "Declined" without an estimate.
+  await expect(card.getByRole("link", { name: "Build estimate" })).toBeVisible();
+  await expect(card.getByRole("button", { name: "Declined – done" })).toHaveCount(0);
+  await expect(card.getByRole("button", { name: "Running late" })).toHaveCount(0);
+  if (SHOTS) await t.screenshot({ path: `${SHOTS}/myday-onsite.png`, fullPage: true });
 
-  await card.getByRole("button", { name: "Declined – done" }).click();
-  await card.getByLabel("Why declined").selectOption("Too expensive");
-  await card.getByLabel("Collected on site").check();
+  await card.getByRole("button", { name: "Trip fee only – done" }).click();
+  await expect(card.getByLabel("Collected on site")).toBeChecked();
   await card.getByLabel("Paid by").selectOption("cash");
-  if (SHOTS) await t.screenshot({ path: `${SHOTS}/myday-declined.png` });
   await card.getByRole("button", { name: "Save & leave" }).click();
-  await expect(card).toContainText("Done ✓ · Estimate declined");
+  await expect(card).toContainText("Done · Estimate declined");
   await techCtx.close();
 
   // Owner: the card is in Declined with the fee badge; the timeline has the whole day.
@@ -64,6 +81,7 @@ test("service call day: book with a window → tech running late, on the way, on
   const timeline = page.getByRole("list", { name: "Activity timeline" });
   await expect(timeline).toContainText("Running late");
   await expect(timeline).toContainText("moved it from On site to Declined");
+  await expect(timeline).toContainText("Service call only, no estimate");
   await expect(timeline).toContainText("Service call fee $89.00 collected (cash)");
   await expect(page.getByRole("list", { name: "Text messages" })).toContainText("running behind at a previous call");
 });

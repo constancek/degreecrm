@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { requireUser } from "@/lib/session";
+import { requireOffice } from "@/lib/session";
 import { listJobs } from "@/lib/services/jobs";
 import { formatCents } from "@/lib/money";
 import { formatDateTime } from "@/lib/format";
@@ -10,7 +10,7 @@ export const metadata: Metadata = { title: "Jobs" };
 const ORDER = ["unscheduled", "scheduled", "in_progress", "completed", "invoiced", "paid", "cancelled"];
 
 export default async function JobsPage() {
-  const user = await requireUser();
+  const user = await requireOffice();
   const jobs = await listJobs(user);
   const groups = ORDER.map((status) => ({ status, jobs: jobs.filter((j) => j.status === status) })).filter((g) => g.jobs.length);
   return (

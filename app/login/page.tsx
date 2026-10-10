@@ -10,7 +10,7 @@ export const metadata: Metadata = { title: "Sign in" };
 /** Only allow same-site relative redirects. */
 function safeCallback(raw: string | string[] | undefined): string {
   const v = Array.isArray(raw) ? raw[0] : raw;
-  return v && v.startsWith("/") && !v.startsWith("//") ? v : "/pipeline";
+  return v && v.startsWith("/") && !v.startsWith("//") ? v : "/";
 }
 
 const ERRORS: Record<string, string> = {

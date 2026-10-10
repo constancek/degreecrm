@@ -38,33 +38,51 @@ export function DeclineFields({ p, set }: { p: StageMovePayload; set: (patch: St
         <option>Not needed right now</option>
         <option>Other</option>
       </select>
-      <fieldset className="space-y-2">
-        <legend className="mb-1 font-medium">Service call fee</legend>
-        {(
-          [
-            ["none", "No charge"],
-            ["collect", "Collected on site"],
-            ["invoice", "Send an invoice"],
-          ] as const
-        ).map(([v, l]) => (
-          <label key={v} className="flex items-center gap-2">
-            <input type="radio" name="fee" checked={(p.fee ?? "none") === v} onChange={() => set({ fee: v })} /> {l}
-          </label>
-        ))}
-        {p.fee && p.fee !== "none" && (
-          <div className="flex gap-2">
-            <input className="input w-28" aria-label="Fee amount" inputMode="decimal" value={p.feeDollars ?? ""} onChange={(e) => set({ feeDollars: e.target.value })} />
-            {p.fee === "collect" && (
-              <select className="input" aria-label="Paid by" value={p.feeMethod ?? "card"} onChange={(e) => set({ feeMethod: e.target.value as "cash" | "check" | "card" })}>
-                <option value="card">Card</option>
-                <option value="cash">Cash</option>
-                <option value="check">Check</option>
-              </select>
-            )}
-          </div>
-        )}
-      </fieldset>
+      <FeeFields p={p} set={set} />
     </>
+  );
+}
+
+/** Service call / trip fee: none, collected on site (how), or invoiced, with the amount. */
+export function FeeFields({ p, set, legend = "Service call fee" }: { p: StageMovePayload; set: (patch: StageMovePayload) => void; legend?: string }) {
+  return (
+    <fieldset className="space-y-2">
+      <legend className="mb-1 font-medium">{legend}</legend>
+      {(
+        [
+          ["none", "No charge"],
+          ["collect", "Collected on site"],
+          ["invoice", "Send an invoice"],
+        ] as const
+      ).map(([v, l]) => (
+        <label key={v} className="flex min-h-9 items-center gap-2">
+          <input type="radio" name="fee" checked={p.fee === v} onChange={() => set({ fee: v })} /> {l}
+        </label>
+      ))}
+      {p.fee && p.fee !== "none" && (
+        <div className="flex gap-2">
+          <input
+            className="input w-28"
+            aria-label="Fee amount"
+            inputMode="decimal"
+            value={p.feeDollars ?? ""}
+            onChange={(e) => set({ feeDollars: e.target.value })}
+          />
+          {p.fee === "collect" && (
+            <select
+              className="input"
+              aria-label="Paid by"
+              value={p.feeMethod ?? "card"}
+              onChange={(e) => set({ feeMethod: e.target.value as "cash" | "check" | "card" })}
+            >
+              <option value="card">Card</option>
+              <option value="cash">Cash</option>
+              <option value="check">Check</option>
+            </select>
+          )}
+        </div>
+      )}
+    </fieldset>
   );
 }
 
@@ -74,7 +92,14 @@ const EXACT = "exact";
  * Date + arrival window (or an exact time) + time on site. Posts `date`, `window`, `time`, `hours`;
  * the server turns them into the visit block and the window texted to the customer (`bookingTimes`).
  */
-export function ArrivalFields(props: { idPrefix: string; defaultDate: string; defaultWindow?: string; defaultTime?: string; defaultHours?: number; hoursOptions?: number[] }) {
+export function ArrivalFields(props: {
+  idPrefix: string;
+  defaultDate: string;
+  defaultWindow?: string;
+  defaultTime?: string;
+  defaultHours?: number;
+  hoursOptions?: number[];
+}) {
   const [win, setWin] = useState(props.defaultWindow ?? WINDOWS[0].id);
   const hours = props.hoursOptions ?? [0.5, 1, 1.5, 2, 3, 4, 6, 8];
   return (
@@ -123,13 +148,25 @@ export function ArrivalFields(props: { idPrefix: string; defaultDate: string; de
 }
 
 /** Tech picker with "assign later". */
-export function TechField(props: { id: string; techs: { id: string; name: string }[]; defaultTechId?: string | null; allowNone?: boolean; onChange?: (v: string) => void }) {
+export function TechField(props: {
+  id: string;
+  techs: { id: string; name: string }[];
+  defaultTechId?: string | null;
+  allowNone?: boolean;
+  onChange?: (v: string) => void;
+}) {
   return (
     <div>
       <label className="label" htmlFor={props.id}>
         Technician
       </label>
-      <select id={props.id} name="techId" className="input" defaultValue={props.defaultTechId ?? props.techs[0]?.id ?? ""} onChange={(e) => props.onChange?.(e.target.value)}>
+      <select
+        id={props.id}
+        name="techId"
+        className="input"
+        defaultValue={props.defaultTechId ?? props.techs[0]?.id ?? ""}
+        onChange={(e) => props.onChange?.(e.target.value)}
+      >
         {props.techs.map((t) => (
           <option key={t.id} value={t.id}>
             {t.name}

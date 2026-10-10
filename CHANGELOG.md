@@ -1,5 +1,21 @@
 # Changelog
 
+## Tech dashboard, audit fixes (2026-10-10)
+
+- Techs land on **Today** (/my-day) and see only Today + Calendar (+ Account for Google Calendar). Pipeline, jobs,
+  price book and dispatch send them back to Today.
+- Today: the next stop is open with Directions / Call / Text, a step strip and only the current step's button;
+  later and finished stops are rows that open the appointment page (/my-day/[id]).
+- Steps (lib/visit-steps.ts): On my way → Arrived → Build estimate → Present to customer → signed: Start work now /
+  Schedule return visit. Exits only where they fit: Running late / Can't make it before arriving, Customer not home
+  once on the way, Trip fee only before an estimate exists, Declined once there is one.
+- Customer not home (`customerNotHome` in visits.ts): visit done as no_show, tech picks the trip fee (none / collected
+  / invoiced), customer texted, owner alerted, lead → Needs reschedule.
+- Before you knock: talking points + public records from RentCast (year built, size, heating/cooling, last sale,
+  value estimate, owner) cached on `Property.intel` for 180 days, plus our own history with the customer.
+- Audit fixes: form errors announced to screen readers, shared dialog focus/Escape (`useDialog`), readable tech
+  colors and small text, signature pad survives interrupted strokes, 44px icon buttons on touch screens.
+
 ## Dispatch-oriented pipeline (2026-10-10)
 
 - New board: New request → Needs scheduling → Needs tech → Scheduled → Needs reschedule → On the way → On site →

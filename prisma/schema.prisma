@@ -110,21 +110,25 @@ model Customer {
 }
 
 model Property {
-  id         String   @id @default(cuid())
-  customerId String
-  street     String
-  unit       String?
-  city       String   @default("Cincinnati")
-  state      String   @default("OH")
-  zip        String?
+  id             String    @id @default(cuid())
+  customerId     String
+  street         String
+  unit           String?
+  city           String    @default("Cincinnati")
+  state          String    @default("OH")
+  zip            String?
   /// e.g. "Hamilton County" — decides the sales tax rate in Ohio.
-  county     String?
-  lat        Float?
-  lng        Float?
+  county         String?
+  lat            Float?
+  lng            Float?
   /// Access instructions, equipment on site, etc.
-  notes      String?
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  notes          String?
+  /// Public-record facts from RentCast (PropertyFacts), cached so each house is looked up once.
+  intel          Json?
+  /// When `intel` was fetched; also set when RentCast had no record (intel stays null) so we don't retry daily.
+  intelFetchedAt DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
   customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
   leads    Lead[]

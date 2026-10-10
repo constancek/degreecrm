@@ -78,12 +78,13 @@ test("customer signs and pays the deposit; owner schedules; tech completes; invo
   const t = await techCtx.newPage();
   await login(t, "tech1@example.com");
   await t.goto(`/my-day?day=${tomorrow}`);
+  // The next stop is open on Today with its one next button.
   const card = t.locator("[data-visit]").first();
   await expect(card).toContainText("James & Linda Porter");
   await card.getByRole("button", { name: "On my way" }).click();
   await card.getByRole("button", { name: "Start work" }).click();
   await card.getByRole("button", { name: "Complete" }).click();
-  await expect(card.getByText("Done ✓")).toBeVisible();
+  await expect(t.locator("[data-visit]").filter({ hasText: "James & Linda Porter" })).toContainText("Done");
   await techCtx.close();
 
   // ---- Owner: job invoiced via (mock) QuickBooks ----

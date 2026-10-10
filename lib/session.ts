@@ -28,6 +28,13 @@ export async function requireUser(): Promise<StaffActor> {
 
 export async function requireOwner(): Promise<StaffActor> {
   const user = await requireUser();
-  if (user.role !== "owner") redirect("/pipeline");
+  if (user.role !== "owner") redirect("/my-day");
+  return user;
+}
+
+/** Office pages (pipeline, jobs, price book): techs work from Today instead. */
+export async function requireOffice(): Promise<StaffActor> {
+  const user = await requireUser();
+  if (user.role === "tech") redirect("/my-day");
   return user;
 }

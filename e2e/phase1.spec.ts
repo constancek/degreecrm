@@ -43,13 +43,16 @@ test("owner signs in, creates a lead, moves it through the pipeline and adds a n
   await expect(page.getByText("Reason: Went with another company")).toBeVisible();
 });
 
-test("a tech only sees their own leads", async ({ page }) => {
+test("a tech works from Today and Calendar only", async ({ page }) => {
   await login(page, "tech1@example.com");
-  await expect(page.getByText("assigned to you")).toBeVisible();
-  await expect(page.locator("[data-lead-id]").filter({ hasText: "James & Linda Porter" })).toHaveCount(1);
-  // Unassigned / other techs' leads are hidden.
-  await expect(page.locator("[data-lead-id]").filter({ hasText: "Sarah Mitchell" })).toHaveCount(0);
-  await expect(page.locator("[data-lead-id]").filter({ hasText: "Oakley Coffee" })).toHaveCount(0);
+  await expect(page).toHaveURL(/\/my-day/);
+  const nav = page.getByRole("navigation");
+  await expect(nav.getByRole("link")).toHaveText(["Today", "Calendar"]);
+  // Office pages send a tech back to Today. (Lead scoping itself is covered in tests/services.test.ts.)
+  await page.goto("/pipeline");
+  await expect(page).toHaveURL(/\/my-day/);
+  await page.goto("/dispatch");
+  await expect(page).toHaveURL(/\/my-day/);
 });
 
 test("host routing: go. serves client pages only, with noindex", async ({ request }) => {

@@ -511,6 +511,54 @@ export async function wrapUpVisit(actor: Actor, id: string, input: WrapUp, now =
   return {};
 }
 
+// ---- Customer not home ----------------------------------------------------------------
+
+export type NoShow = { fee: "none" | "collect" | "invoice"; feeCents?: number; method?: "cash" | "check" | "card"; notifyCustomer?: boolean };
+
+/**
+ * The tech got there and nobody answered: close the visit as a no-show, settle the trip fee the tech picked,
+ * text the customer we'll call to rebook, and put the lead back in "Needs reschedule" for the office.
+ */
+export async function customerNotHome(actor: Actor, id: string, input: NoShow, now = new Date()) {
+  const v = await getVisit(actor, id);
+  if (!["en_route", "in_progress"].includes(v.status)) throw new ValidationError("Tap “On my way” first");
+  await db.$transaction(async (tx) => {
+    await tx.visit.update({
+      where: { id },
+      data: { status: "done", outcome: "no_show", completedAt: now, startedAt: v.startedAt ?? now, feeStatus: input.fee === "none" ? "waived" : undefined },
+    });
+    await recordActivity(tx, actor, { type: "visit_no_show", leadId: v.leadId, body: `Customer not home at ${clockEt(now)}`, data: { visitId: id, fee: input.fee } });
+  });
+  await stopEnrollments({ visitId: id }, "no show");
+
+  if (input.fee !== "none") {
+    const { settleServiceFee } = await import("./payments");
+    const { getCompany } = await import("./company");
+    const amount = input.feeCents ?? (await getCompany()).serviceCallFeeCents;
+    await settleServiceFee(actor, id, { mode: input.fee, amountCents: amount, method: input.method });
+  }
+
+  if (v.kind === "estimate") await changeStage(actor, v.leadId, "needs_reschedule");
+  else {
+    await db.$transaction(async (tx) => {
+      const embed = leadStageEmbed({ ...v.lead, assignedTo: v.tech ? { name: v.tech.name } : null });
+      embed.embeds![0]!.title = `Customer not home — job visit needs rescheduling: ${v.lead.title} (${when(v.start)})`;
+      await enqueueDiscord(tx, embed);
+    });
+    await flushOutboxSoon();
+  }
+  const fee = input.fee === "none" ? "no trip fee" : input.fee === "collect" ? "trip fee collected" : "trip fee invoiced";
+  await alertOwner(`${v.lead.customer.name} wasn't home for ${v.tech ? firstName(v.tech.name) : "the tech"} (${when(v.start)}, ${fee}). Reschedule: ${appUrl()}/leads/${v.leadId}`);
+  if (input.notifyCustomer ?? true) {
+    await sendCustomerText(actor, {
+      customerId: v.lead.customerId,
+      leadId: v.leadId,
+      body: `Hi ${firstName(v.lead.customer.name)}, ${v.tech ? firstName(v.tech.name) : "your technician"} from Degree of Comfort stopped by at ${clockEt(now)} but couldn't reach anyone. We'll call you to find a new time.`,
+    });
+  }
+  return {};
+}
+
 // ---- Google Calendar: outbound ------------------------------------------------------
 
 async function syncVisitSoon(visitId: string) {
