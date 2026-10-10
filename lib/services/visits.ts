@@ -35,7 +35,13 @@ const STAGE_ORDER = [
 const before = (a: string, b: string) => STAGE_ORDER.indexOf(a) < STAGE_ORDER.indexOf(b);
 
 const visitInclude = {
-  lead: { include: { customer: true, property: true } },
+  lead: {
+    include: {
+      customer: true,
+      property: true,
+      proposals: { where: { status: { in: ["sent", "viewed", "signed"] } }, orderBy: { version: "desc" }, take: 1, select: { id: true, status: true } },
+    },
+  },
   job: true,
   tech: { select: { id: true, name: true, phone: true, googleRefreshToken: true } },
 } satisfies Prisma.VisitInclude;

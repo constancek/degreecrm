@@ -89,6 +89,10 @@ e2e/                      Playwright happy paths (production build on :3100 agai
   tokenizer stand-in at /api/dev/qbo-token 404s otherwise). Never set it in production. `setPdfRenderer` stubs Chromium in tests.
 - Signing is built in (no third party): consent + T&C + phone gate + drawn/typed signature → `Signature` row with
   `contentHash`; the signed PDF (print page + certificate page) is rendered after the response, hashed, emailed and texted.
+- Design target is iPad as well as phone: check 820×1180 and 1180×820. Drag uses `useBoardSensors` (mouse distance,
+  touch long-press). Touch screens get 44px controls via `@media (pointer: coarse)` in globals.css.
+- "Present to customer": /proposals/[id]/present (CRM) → /p/[token]/present?t= (10-min HMAC pass) sets the gate +
+  presenter cookies. Build client-host redirects from `clientUrl()`, never `req.url` (it carries the internal host).
 - Pipeline drags call `planStageMove` (what the stage needs) then `performStageMove` (does it). Backward moves are plain.
 - Booking requests: customer picks a day + 3-hour window (lib/booking.ts); any estimate `scheduleVisit` confirms the
   pending request. Texts from numbers not in the CRM are ignored. Deleting an event in Google cancels the visit + texts.

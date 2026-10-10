@@ -11,6 +11,8 @@ export function BookingPanel(props: {
   window: string;
   altDate: string | null;
   altWindow: string | null;
+  alt2Date: string | null;
+  alt2Window: string | null;
   techs: { id: string; name: string }[];
   defaultTechId: string | null;
   dates: { ymd: string; label: string }[];
@@ -18,33 +20,36 @@ export function BookingPanel(props: {
 }) {
   const [confirmState, confirm, confirming] = useActionState(confirmBookingAction.bind(null, props.bookingId, props.leadId), undefined);
   const [declineState, decline, declining] = useActionState(declineBookingAction.bind(null, props.bookingId, props.leadId), undefined);
-  const [choice, setChoice] = useState<"first" | "second">("first");
-  const date = choice === "first" ? props.date : (props.altDate ?? props.date);
-  const window = choice === "first" ? props.window : (props.altWindow ?? props.window);
+  const choices = [
+    { key: "first", label: "First choice", date: props.date, window: props.window },
+    { key: "second", label: "Second choice", date: props.altDate, window: props.altWindow },
+    { key: "third", label: "Third choice", date: props.alt2Date, window: props.alt2Window },
+  ].filter((c): c is { key: string; label: string; date: string; window: string } => Boolean(c.date && c.window));
+  const [choice, setChoice] = useState("first");
+  const picked = choices.find((c) => c.key === choice) ?? choices[0]!;
+  const date = picked.date;
+  const window = picked.window;
   const dates = props.dates.some((d) => d.ymd === date) ? props.dates : [{ ymd: date, label: dateLabel(date) }, ...props.dates];
 
   return (
     <section className="card border-amber-400 p-4" aria-label="Booking request">
       <h2 className="font-semibold">Booking request</h2>
-      <p className="mt-1 text-sm">
-        Wants an estimate <strong>{dateLabel(props.date)}, {windowLabel(props.window)}</strong>
-        {props.altDate && (
-          <>
-            {" "}or <strong>{dateLabel(props.altDate)}, {windowLabel(props.altWindow)}</strong>
-          </>
-        )}
-        .
-      </p>
+      <ol className="mt-1 list-decimal pl-5 text-sm">
+        {choices.map((c) => (
+          <li key={c.key}>
+            <strong>{dateLabel(c.date)}</strong>, {windowLabel(c.window)}
+          </li>
+        ))}
+      </ol>
       {props.canConfirm && (
         <>
-          {props.altDate && (
-            <div className="mt-2 flex gap-3 text-sm">
-              <label className="flex items-center gap-1">
-                <input type="radio" checked={choice === "first"} onChange={() => setChoice("first")} /> First choice
-              </label>
-              <label className="flex items-center gap-1">
-                <input type="radio" checked={choice === "second"} onChange={() => setChoice("second")} /> Second choice
-              </label>
+          {choices.length > 1 && (
+            <div className="mt-2 flex flex-wrap gap-2 text-sm">
+              {choices.map((c) => (
+                <label key={c.key} className="flex min-h-11 items-center gap-2 rounded-md border px-3 has-[:checked]:border-brand has-[:checked]:bg-brand/5">
+                  <input type="radio" checked={choice === c.key} onChange={() => setChoice(c.key)} /> {c.label}
+                </label>
+              ))}
             </div>
           )}
           <form key={choice} action={confirm} className="mt-3 grid gap-2 text-sm sm:grid-cols-3">

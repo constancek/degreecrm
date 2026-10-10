@@ -1,15 +1,12 @@
 "use client";
 
+import { useBoardSensors } from "@/lib/client/dnd-sensors";
 import { useRouter } from "next/navigation";
 import { useId, useMemo, useState, useTransition } from "react";
 import {
   DndContext,
-  KeyboardSensor,
-  PointerSensor,
   useDraggable,
   useDroppable,
-  useSensor,
-  useSensors,
   type DragEndEvent,
 } from "@dnd-kit/core";
 import { formatCents, lineTotalCents, marginPercent, optionTotals, parseDollars } from "@/lib/money";
@@ -61,7 +58,7 @@ export function ProposalEditor(props: {
   const [saving, startSave] = useTransition();
   const [message, setMessage] = useState<{ error?: string; ok?: string } | null>(null);
   const book = useMemo(() => new Map(props.priceBook.map((b) => [b.id, b])), [props.priceBook]);
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }), useSensor(KeyboardSensor));
+  const sensors = useBoardSensors();
   const ro = !props.editable;
   const dndId = useId();
 

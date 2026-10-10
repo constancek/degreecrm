@@ -89,8 +89,10 @@ export async function signAction(token: string, input: import("@/lib/services/si
   const { ValidationError } = await import("@/lib/services/actor");
   const { ZodError } = await import("zod");
   try {
-    // `authorized` already checked the phone gate cookie for this link.
-    await signProposal(p, input, { ...(await requestMeta()), phoneVerified: true });
+    // `authorized` already checked the gate cookie. It came from the phone check, or from staff presenting in person.
+    const { presentCookieName, presenterFor } = await import("@/lib/services/client-proposals");
+    const presenter = await presenterFor(p.id, (await cookies()).get(presentCookieName(p.id))?.value);
+    await signProposal(p, input, { ...(await requestMeta()), phoneVerified: !presenter, presentedByName: presenter?.name ?? null });
   } catch (err) {
     if (err instanceof ZodError) return { error: err.issues[0]?.message ?? "Please check the form" };
     if (err instanceof ValidationError) return { error: err.message };

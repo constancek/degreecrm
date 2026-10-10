@@ -21,7 +21,7 @@ export default async function MyDayPage({ searchParams }: PageProps<"/my-day">) 
   const visits = await listVisits(user, { from, to: easternMidnight(addDaysYmd(ymd, 1)), techId: user.id });
 
   return (
-    <div className="mx-auto w-full max-w-xl p-4">
+    <div className="mx-auto w-full max-w-xl p-4 lg:max-w-5xl">
       <div className="flex items-center justify-between">
         <Link href={`/my-day?day=${addDaysYmd(ymd, -1)}`} className="px-2 text-brand" aria-label="Previous day">
           ←
@@ -32,7 +32,7 @@ export default async function MyDayPage({ searchParams }: PageProps<"/my-day">) 
         </Link>
       </div>
       {visits.length === 0 && <p className="card mt-4 p-6 text-center text-sm text-gray-500">No visits scheduled.</p>}
-      <ol className="mt-4 space-y-3">
+      <ol className="mt-4 grid gap-3 lg:grid-cols-2">
         {visits.map((v) => {
           const address = formatAddress(v.lead.property);
           return (
@@ -66,6 +66,11 @@ export default async function MyDayPage({ searchParams }: PageProps<"/my-day">) 
               )}
               {v.lead.property?.notes && <p className="mt-1 text-sm text-gray-600">Access: {v.lead.property.notes}</p>}
               {v.notes && <p className="mt-1 text-sm text-gray-600">Notes: {v.notes}</p>}
+              {v.lead.proposals[0] && (
+                <a href={`/proposals/${v.lead.proposals[0].id}/present`} target="_blank" rel="noreferrer" className="btn-secondary mt-3 w-full py-3">
+                  {v.lead.proposals[0].status === "signed" ? "Show signed proposal" : "Present proposal"}
+                </a>
+              )}
               <div className="mt-3">
                 <VisitStatusButtons visitId={v.id} status={v.status} canText={Boolean(v.lead.customer.phone) && !v.lead.customer.smsOptOut} />
               </div>

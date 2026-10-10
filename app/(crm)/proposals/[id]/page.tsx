@@ -47,7 +47,7 @@ export default async function ProposalPage({ params }: PageProps<"/proposals/[id
   const customer = p.lead.customer;
 
   return (
-    <div className="mx-auto grid w-full max-w-7xl gap-4 p-4 xl:grid-cols-[1fr_320px]">
+    <div className="mx-auto grid w-full max-w-7xl gap-4 p-4 lg:grid-cols-[1fr_300px]">
       <div className="min-w-0">
         <Link href={`/leads/${p.leadId}`} className="text-sm text-brand hover:underline">
           ← {customer.name}
@@ -164,6 +164,12 @@ export default async function ProposalPage({ params }: PageProps<"/proposals/[id
         {p.token && (
           <section className="card space-y-2 p-4 text-sm">
             <h2 className="font-semibold">Customer link</h2>
+            {p.status !== "superseded" && (
+              <a href={`/proposals/${p.id}/present`} target="_blank" rel="noreferrer" className="btn-primary w-full">
+                Present to customer
+              </a>
+            )}
+            <p className="text-xs text-gray-500">Opens it on this device without the phone check, for going over it in person.</p>
             <CopyLink link={proposalLink(p.token)} />
             <p className={textStatus && !textStatus.texted ? "text-amber-800" : "text-gray-600"}>
               {textStatus?.texted

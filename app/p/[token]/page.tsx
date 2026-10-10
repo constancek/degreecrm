@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { cookies } from "next/headers";
 import {
   clientState,
+  presentCookieName,
+  presenterFor,
   gateCookieName,
   gateCookieValid,
   gateKind,
@@ -100,14 +102,21 @@ export default async function ProposalPage({ params }: PageProps<"/p/[token]">) 
     );
   }
 
-  await recordView(p, await requestMeta());
+  // Staff showing it in person: don't count it as the customer opening the link.
+  const presenter = await presenterFor(p.id, (await cookies()).get(presentCookieName(p.id))?.value);
+  if (!presenter) await recordView(p, await requestMeta());
   return (
     <Shell>
+      {presenter && (
+        <p className="mb-4 rounded-md bg-blue-50 p-2 text-center text-xs text-blue-800">
+          Presenting in person: {presenter.name}. Hand the device to the customer to choose and sign.
+        </p>
+      )}
       <ProposalChooser
         view={view}
         token={token}
         termsHref={view.termsVersion ? `/terms/${view.termsVersion}` : null}
-        signer={{ name: p.lead.customer.name, email: p.lead.customer.email ?? "" }}
+        signer={{ name: p.lead.customer.name, email: p.lead.customer.email ?? "", hasPhone: Boolean(p.lead.customer.phone) }}
       />
     </Shell>
   );

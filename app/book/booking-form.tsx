@@ -9,7 +9,7 @@ export function BookingForm({ dates, embedded }: { dates: { ymd: string; label: 
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
-  const [showAlt, setShowAlt] = useState(false);
+  const [showThird, setShowThird] = useState(false);
   const root = useRef<HTMLDivElement>(null);
 
   // Tell the parent page (our website) how tall the form is, so the iframe fits without scrolling.
@@ -20,7 +20,7 @@ export function BookingForm({ dates, embedded }: { dates: { ymd: string; label: 
     ro.observe(root.current);
     post();
     return () => ro.disconnect();
-  }, [embedded, done, showAlt, error]);
+  }, [embedded, done, showThird, error]);
 
   function submit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -39,8 +39,10 @@ export function BookingForm({ dates, embedded }: { dates: { ymd: string; label: 
         message: s("message"),
         date: s("date"),
         window: s("window"),
-        altDate: showAlt && s("altDate") ? s("altDate") : undefined,
-        altWindow: showAlt && s("altWindow") ? s("altWindow") : undefined,
+        altDate: s("altDate"),
+        altWindow: s("altWindow"),
+        alt2Date: showThird && s("alt2Date") ? s("alt2Date") : undefined,
+        alt2Window: showThird && s("alt2Window") ? s("alt2Window") : undefined,
         company_website: s("company_website"),
       });
       if (res.ok) setDone(true);
@@ -114,67 +116,17 @@ export function BookingForm({ dates, embedded }: { dates: { ymd: string; label: 
           <textarea id="b-message" name="message" className="input min-h-24" placeholder="e.g. Upstairs AC is blowing warm air" required />
         </div>
 
-        <fieldset className="rounded-lg border p-4 sm:col-span-6">
-          <legend className="px-1 text-sm font-semibold">Preferred appointment</legend>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div>
-              <label className="label" htmlFor="b-date">
-                Day
-              </label>
-              <select id="b-date" name="date" className="input" required defaultValue="">
-                <option value="" disabled>
-                  Choose a day
-                </option>
-                {dates.map((d) => (
-                  <option key={d.ymd} value={d.ymd}>
-                    {d.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <span className="label">Arrival window</span>
-              <div className="grid gap-1.5">
-                {WINDOWS.map((w, i) => (
-                  <label key={w.id} className="flex items-center gap-2 text-sm">
-                    <input type="radio" name="window" value={w.id} defaultChecked={i === 0} required /> {w.label}
-                  </label>
-                ))}
-              </div>
-            </div>
-          </div>
-          {showAlt ? (
-            <div className="mt-4 grid gap-3 border-t pt-4 sm:grid-cols-2">
-              <div>
-                <label className="label" htmlFor="b-altDate">
-                  Second choice day
-                </label>
-                <select id="b-altDate" name="altDate" className="input" defaultValue="">
-                  <option value="">No second choice</option>
-                  {dates.map((d) => (
-                    <option key={d.ymd} value={d.ymd}>
-                      {d.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <span className="label">Second choice window</span>
-                <div className="grid gap-1.5">
-                  {WINDOWS.map((w) => (
-                    <label key={w.id} className="flex items-center gap-2 text-sm">
-                      <input type="radio" name="altWindow" value={w.id} /> {w.label}
-                    </label>
-                  ))}
-                </div>
-              </div>
-            </div>
+        <div className="grid gap-4 sm:col-span-6 md:grid-cols-2">
+          <Choice title="First choice" dayName="date" windowName="window" dates={dates} required defaultWindow="09-12" />
+          <Choice title="Second choice" dayName="altDate" windowName="altWindow" dates={dates} required defaultWindow="12-15" />
+          {showThird ? (
+            <Choice title="Third choice (optional)" dayName="alt2Date" windowName="alt2Window" dates={dates} required={false} />
           ) : (
-            <button type="button" className="mt-3 text-sm text-brand underline" onClick={() => setShowAlt(true)}>
-              Add a second choice
+            <button type="button" className="self-start text-sm text-brand underline md:col-span-2" onClick={() => setShowThird(true)}>
+              Add a third choice
             </button>
           )}
-        </fieldset>
+        </div>
 
         {/* Honeypot: hidden from people, bots fill it in. */}
         <input name="company_website" tabIndex={-1} autoComplete="off" aria-hidden="true" className="absolute -left-[9999px] h-0 w-0" />
@@ -188,5 +140,45 @@ export function BookingForm({ dates, embedded }: { dates: { ymd: string; label: 
         </div>
       </form>
     </div>
+  );
+}
+
+function Choice(props: {
+  title: string;
+  dayName: string;
+  windowName: string;
+  dates: { ymd: string; label: string }[];
+  required: boolean;
+  defaultWindow?: string;
+}) {
+  return (
+    <fieldset className="rounded-lg border p-4">
+      <legend className="px-1 text-sm font-semibold">{props.title}</legend>
+      <label className="label" htmlFor={`b-${props.dayName}`}>
+        Day
+      </label>
+      <select id={`b-${props.dayName}`} name={props.dayName} className="input" required={props.required} defaultValue="">
+        <option value="" disabled={props.required}>
+          {props.required ? "Choose a day" : "No third choice"}
+        </option>
+        {props.dates.map((d) => (
+          <option key={d.ymd} value={d.ymd}>
+            {d.label}
+          </option>
+        ))}
+      </select>
+      <span className="label mt-3">Arrival window</span>
+      <div className="grid gap-2">
+        {WINDOWS.map((w) => (
+          <label
+            key={w.id}
+            className="flex min-h-11 cursor-pointer items-center gap-2 rounded-md border px-3 py-2 text-sm has-[:checked]:border-brand has-[:checked]:bg-brand/5"
+          >
+            <input type="radio" name={props.windowName} value={w.id} defaultChecked={w.id === props.defaultWindow} required={props.required} />
+            {w.label}
+          </label>
+        ))}
+      </div>
+    </fieldset>
   );
 }

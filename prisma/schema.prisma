@@ -462,6 +462,8 @@ model Signature {
   userAgent          String?
   /// The customer passed the phone-last-4 check on this link.
   phoneVerified      Boolean   @default(false)
+  /// Signed in person on a staff member's device ("Present to customer").
+  presentedByName    String?
   consentAt          DateTime?
   signedAt           DateTime
   termsVersion       Int
@@ -699,21 +701,24 @@ model Message {
 
 /// A customer's preferred day + 3-hour arrival window, waiting for the owner to confirm.
 model BookingRequest {
-  id        String   @id @default(cuid())
-  leadId    String
+  id         String   @id @default(cuid())
+  leadId     String
   /// Eastern calendar date, YYYY-MM-DD.
-  date      String
+  date       String
   /// Arrival window id, e.g. "09-12".
-  window    String
-  altDate   String?
-  altWindow String?
+  window     String
+  altDate    String?
+  altWindow  String?
+  /// Optional third choice.
+  alt2Date   String?
+  alt2Window String?
   /// pending | confirmed | declined
-  status    String   @default("pending")
+  status     String   @default("pending")
   /// website | claude | staff
-  source    String   @default("website")
-  visitId   String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  source     String   @default("website")
+  visitId    String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
   lead Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
 

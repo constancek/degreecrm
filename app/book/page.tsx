@@ -21,7 +21,7 @@ export default async function BookPage({ searchParams }: PageProps<"/book">) {
           <p className="text-lg font-semibold text-brand">{company.name}</p>
           <h1 className="mt-2 text-2xl font-semibold">Request an appointment</h1>
           <p className="mt-1 text-sm text-gray-600">
-            Pick a day and a 3-hour arrival window. We&apos;ll text you to confirm.
+            Give us two days and arrival windows that work for you. We&apos;ll text you to confirm.
             {company.phone ? ` In a hurry? Call ${formatPhone(company.phone)}.` : ""}
           </p>
         </header>

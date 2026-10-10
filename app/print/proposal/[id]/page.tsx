@@ -169,7 +169,13 @@ export default async function PrintProposal({ params, searchParams }: PageProps<
               Version {sig.termsVersion}, accepted {AUDIT_TIME.format(sig.termsAcceptedAt)}
             </dd>
             <dt className="text-gray-500">Identity check</dt>
-            <dd>{sig.phoneVerified ? "Opened the private link texted to the customer and confirmed the last 4 digits of their phone" : "None (recorded by the company)"}</dd>
+            <dd>
+              {sig.phoneVerified
+                ? "Opened the private link texted to the customer and confirmed the last 4 digits of their phone"
+                : sig.presentedByName
+                  ? `Signed in person on the device of ${sig.presentedByName} (${view.company.name}), who presented the proposal`
+                  : "None (recorded by the company)"}
+            </dd>
             <dt className="text-gray-500">IP address</dt>
             <dd>{sig.ip ?? "—"}</dd>
             <dt className="text-gray-500">Device</dt>

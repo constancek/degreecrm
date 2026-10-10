@@ -40,7 +40,7 @@ export default async function LeadPage({ params }: PageProps<"/leads/[id]">) {
   const address = formatAddress(lead.property);
 
   return (
-    <div className="mx-auto grid w-full max-w-6xl gap-4 p-4 lg:grid-cols-[1fr_380px]">
+    <div className="mx-auto grid w-full max-w-6xl gap-4 p-4 md:grid-cols-[1fr_280px] lg:grid-cols-[1fr_340px]">
       <div className="space-y-4">
         <div>
           <Link href="/pipeline" className="text-sm text-brand hover:underline">
@@ -97,6 +97,8 @@ export default async function LeadPage({ params }: PageProps<"/leads/[id]">) {
             window={booking.window}
             altDate={booking.altDate}
             altWindow={booking.altWindow}
+            alt2Date={booking.alt2Date}
+            alt2Window={booking.alt2Window}
             techs={staff.map((s) => ({ id: s.id, name: s.name }))}
             defaultTechId={lead.assignedToId}
             dates={bookableDates()}
@@ -316,6 +318,8 @@ function describeActivity(type: string, data: unknown): string {
       return "requested an appointment";
     case "booking_declined":
       return "declined the appointment request";
+    case "proposal_presented":
+      return "presented the proposal in person";
     case "sms_received":
       return "texted us";
     case "sms_opt_out":

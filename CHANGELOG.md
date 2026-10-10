@@ -1,5 +1,17 @@
 # Changelog
 
+## iPad, two-choice booking, presenting in person (2026-10-10)
+
+- Booking form always asks for two choices (different from each other), with an optional third; "All day
+  (9 am – 6 pm)" added as an arrival window. Owner confirm panel picks between the choices.
+- **Present to customer**: staff open a proposal on their own device without the phone check (from the proposal page
+  or My day). Not counted as a customer view; the signature certificate records who presented it. Signer email is
+  optional when the customer has a phone (the signed copy is texted).
+- iPad: touch drag on all boards (press and hold to pick up, swipe still scrolls), 44pt touch targets and 16px inputs
+  on touch screens, nav fits portrait, two-column lead/job/proposal pages from iPad portrait, dispatch side panel
+  beside the board in landscape, larger signature pad (re-sizes on rotation), two-column My day in landscape.
+- Fix: client-page redirects used the internal host (now always the client URL).
+
 ## Signing, booking and drag actions (2026-10-10)
 
 - **Built-in e-signature** replaces Documenso: signature pad (draw or type) on the proposal page, separate consent to

@@ -14,22 +14,31 @@ export function SignaturePad({ name, onChange }: { name: string; onChange: (v: S
   const strokes = useRef(0);
   const last = useRef<{ x: number; y: number } | null>(null);
 
-  // Size the canvas for crisp lines on high-density screens.
+  // Size the canvas for crisp lines on high-density screens; redo it when an iPad rotates (while still blank).
   useEffect(() => {
     if (mode !== "draw") return;
-    const c = canvas.current!;
-    const ratio = window.devicePixelRatio || 1;
-    const rect = c.getBoundingClientRect();
-    c.width = Math.round(rect.width * ratio);
-    c.height = Math.round(rect.height * ratio);
-    const ctx = c.getContext("2d")!;
-    ctx.scale(ratio, ratio);
-    ctx.lineWidth = 2.5;
-    ctx.lineCap = "round";
-    ctx.lineJoin = "round";
-    ctx.strokeStyle = "#111827";
-    strokes.current = 0;
-    onChange(null);
+    const setup = () => {
+      const c = canvas.current;
+      if (!c) return;
+      const ratio = window.devicePixelRatio || 1;
+      const rect = c.getBoundingClientRect();
+      c.width = Math.round(rect.width * ratio);
+      c.height = Math.round(rect.height * ratio);
+      const ctx = c.getContext("2d")!;
+      ctx.scale(ratio, ratio);
+      ctx.lineWidth = 2.5;
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
+      ctx.strokeStyle = "#111827";
+      strokes.current = 0;
+      onChange(null);
+    };
+    setup();
+    const onResize = () => {
+      if (strokes.current === 0) setup();
+    };
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
   }, [mode, onChange]);
 
   useEffect(() => {
@@ -76,7 +85,7 @@ export function SignaturePad({ name, onChange }: { name: string; onChange: (v: S
           <canvas
             ref={canvas}
             aria-label="Signature pad: draw your signature"
-            className="h-40 w-full touch-none rounded-md border-2 border-dashed border-gray-300 bg-white"
+            className="h-40 w-full touch-none rounded-md border-2 border-dashed border-gray-300 bg-white md:h-56"
             onPointerDown={(e) => {
               e.currentTarget.setPointerCapture(e.pointerId);
               drawing.current = true;

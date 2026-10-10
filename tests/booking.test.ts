@@ -62,7 +62,18 @@ describe("booking requests", () => {
     const day = bookableDates()[2]!.ymd;
     const r = await requestBooking(
       website,
-      { name: "Ana Diaz", phone: "513-555-0199", street: "12 Main St", zip: "45202", trade: "hvac", message: "Furnace won't start", date: day, window: "12-15" },
+      {
+        name: "Ana Diaz",
+        phone: "513-555-0199",
+        street: "12 Main St",
+        zip: "45202",
+        trade: "hvac",
+        message: "Furnace won't start",
+        date: day,
+        window: "12-15",
+        altDate: day,
+        altWindow: "09-18",
+      },
       { ip: "9.9.9.9", source: "website" },
     );
     expect(r.status).toBe("pending");
@@ -80,8 +91,24 @@ describe("booking requests", () => {
 
   it("rejects Sundays and past days", async () => {
     await expect(
-      requestBooking(website, { name: "A B", phone: "5135550199", street: "1 A St", trade: "hvac", message: "Help", date: "2020-01-01", window: "09-12" }, { ip: null, source: "website" }),
+      requestBooking(
+        website,
+        { name: "A B", phone: "5135550199", street: "1 A St", trade: "hvac", message: "Help", date: "2020-01-01", window: "09-12", altDate: "2020-01-02", altWindow: "09-12" },
+        { ip: null, source: "website" },
+      ),
     ).rejects.toBeInstanceOf(ValidationError);
+  });
+
+  it("the website form needs two different choices; all day is a window", async () => {
+    const day = bookableDates()[3]!.ymd;
+    const base = { name: "A B", phone: "5135550198", street: "1 A St", trade: "hvac" as const, message: "Help" };
+    await expect(requestBooking(website, { ...base, date: day, window: "09-12" } as never, { ip: null, source: "website" })).rejects.toThrow(/second choice/);
+    await expect(requestBooking(website, { ...base, date: day, window: "09-12", altDate: day, altWindow: "09-12" }, { ip: null, source: "website" })).rejects.toThrow(
+      /different/,
+    );
+    const r = await requestBooking(website, { ...base, date: day, window: "09-18", altDate: day, altWindow: "15-18", alt2Date: day, alt2Window: "12-15" }, { ip: null, source: "website" });
+    expect(r).toMatchObject({ window: "09-18", altWindow: "15-18", alt2Window: "12-15" });
+    expect(windowTimes(day, "09-18").end.getTime() - windowTimes(day, "09-18").start.getTime()).toBe(9 * 3_600_000);
   });
 });
 

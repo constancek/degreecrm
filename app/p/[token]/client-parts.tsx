@@ -68,7 +68,7 @@ export function ProposalChooser({
   view: ProposalView;
   token: string;
   termsHref: string | null;
-  signer: { name: string; email: string };
+  signer: { name: string; email: string; hasPhone: boolean };
 }) {
   const router = useRouter();
   const [selected, setSelected] = useState<string | null>(view.selectedOptionId);
@@ -219,7 +219,7 @@ export function ProposalChooser({
                 </div>
                 <div>
                   <label className="label" htmlFor="signer-email">
-                    Email for your signed copy
+                    Email for your signed copy{signer.hasPhone ? " (optional)" : ""}
                   </label>
                   <input
                     id="signer-email"
@@ -256,7 +256,9 @@ export function ProposalChooser({
                 ? "Sign in the box above."
                 : !consent
                   ? "Agree to sign electronically to continue."
-                  : "We'll email you a signed copy right away."}
+                  : email
+                    ? "We'll email you a signed copy right away."
+                    : "We'll text you a link to your signed copy right away."}
           </p>
           {error && <p className="mt-2 rounded-md bg-red-50 p-2 text-sm text-red-700">{error}</p>}
         </section>

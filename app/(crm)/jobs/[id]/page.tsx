@@ -28,7 +28,7 @@ export default async function JobPage({ params }: PageProps<"/jobs/[id]">) {
   const isOwner = user.role === "owner";
 
   return (
-    <div className="mx-auto grid w-full max-w-6xl gap-4 p-4 lg:grid-cols-[1fr_340px]">
+    <div className="mx-auto grid w-full max-w-6xl gap-4 p-4 md:grid-cols-[1fr_280px] lg:grid-cols-[1fr_340px]">
       <div className="space-y-4">
         <div>
           <Link href={`/leads/${job.leadId}`} className="text-sm text-brand hover:underline">

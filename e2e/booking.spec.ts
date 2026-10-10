@@ -15,9 +15,14 @@ test("website booking request → owner confirms the window → visit booked, st
   await c.getByLabel("ZIP").fill("45202");
   await c.getByLabel("Plumbing").check();
   await c.getByLabel("What's going on?").fill("Kitchen sink is backing up");
-  const day = await c.getByLabel("Day", { exact: true }).locator("option").nth(2).getAttribute("value");
-  await c.getByLabel("Day", { exact: true }).selectOption(day!);
-  await c.getByLabel("12 pm – 3 pm").check();
+  const first = c.getByRole("group", { name: "First choice" });
+  const second = c.getByRole("group", { name: "Second choice" });
+  const day = await first.getByLabel("Day", { exact: true }).locator("option").nth(2).getAttribute("value");
+  await first.getByLabel("Day", { exact: true }).selectOption(day!);
+  await first.getByLabel("12 pm – 3 pm").check();
+  // Submitting without a second choice is refused by the browser (required).
+  await second.getByLabel("Day", { exact: true }).selectOption({ index: 3 });
+  await second.getByLabel("All day (9 am – 6 pm)").check();
   await c.getByRole("button", { name: "Request appointment" }).click();
   await expect(c.getByText("Request received")).toBeVisible();
   await ctx.close();
@@ -29,6 +34,7 @@ test("website booking request → owner confirms the window → visit booked, st
   await card.getByRole("link", { name: "Booker Test" }).click();
   const panel = page.getByRole("region", { name: "Booking request" });
   await expect(panel).toContainText("12 pm – 3 pm");
+  await expect(panel).toContainText("All day (9 am – 6 pm)");
   await panel.getByLabel("Tech").selectOption({ label: "Dana Cole" });
   await panel.getByRole("button", { name: "Confirm & text customer" }).click();
   await expect(page.getByRole("list", { name: "Visits" })).toContainText("Dana Cole");

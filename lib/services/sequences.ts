@@ -8,6 +8,7 @@ import { SYSTEM, ValidationError, isOwner, ForbiddenError, type Actor } from "./
 import { getCompany } from "./company";
 import { hasReceivedAutomatedText, sendCustomerText } from "./messages";
 import { proposalLink } from "./proposals";
+import { windowForTimes } from "@/lib/booking";
 
 export const TRIGGERS = [
   { id: "follow_up", label: "Lead moves to Follow up" },
@@ -230,9 +231,11 @@ const HOUR_FMT = new Intl.DateTimeFormat("en-US", { timeZone: TZ, hour: "numeric
 
 /** "Tue, Oct 14 between 9 AM and 12 PM" for arrival windows, "Tue, Oct 14, 9:30 AM" otherwise. */
 export function visitWhen(start: Date, end: Date) {
-  const hours = (end.getTime() - start.getTime()) / 3_600_000;
   const t = (d: Date) => HOUR_FMT.format(d).replace(":00", "");
-  return hours === 3 ? `${DAY.format(start)} between ${t(start)} and ${t(end)}` : DATE_TIME.format(start);
+  const hourEt = (d: Date) => Number(new Intl.DateTimeFormat("en-US", { timeZone: TZ, hour: "numeric", hour12: false }).format(d)) % 24;
+  const onTheHour = start.getUTCMinutes() === 0 && end.getUTCMinutes() === 0;
+  // Arrival windows (9–12, 12–3, 3–6, all day) read as a range; other visits as a start time.
+  return onTheHour && windowForTimes(hourEt(start), hourEt(end)) ? `${DAY.format(start)} between ${t(start)} and ${t(end)}` : DATE_TIME.format(start);
 }
 
 export function renderTemplate(template: string, vars: Record<string, string>) {

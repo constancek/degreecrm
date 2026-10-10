@@ -1,4 +1,5 @@
 import { cookies } from "next/headers";
+import { clientUrl } from "@/lib/env";
 import { getProposalPdf } from "@/lib/pdf";
 import { clientState, gateCookieName, gateCookieValid, loadByToken } from "@/lib/services/client-proposals";
 
@@ -10,7 +11,7 @@ export async function GET(_req: Request, ctx: RouteContext<"/p/[token]/pdf">) {
   const p = await loadByToken(token);
   if (!p || clientState(p) === "locked") return new Response("Not found", { status: 404 });
   const cookie = (await cookies()).get(gateCookieName(p.id))?.value;
-  if (!gateCookieValid(p.id, token, cookie)) return Response.redirect(new URL(`/p/${token}`, _req.url), 303);
+  if (!gateCookieValid(p.id, token, cookie)) return Response.redirect(`${clientUrl()}/p/${token}`, 303);
   if (!p.selectedOptionId) return new Response("Choose an option first, then download the PDF.", { status: 409 });
 
   const pdf = await getProposalPdf(p.id, p.selectedOptionId, { cache: true });

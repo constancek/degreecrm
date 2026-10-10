@@ -1,17 +1,14 @@
 "use client";
 
+import { useBoardSensors } from "@/lib/client/dnd-sensors";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useId, useMemo, useRef, useState, useTransition } from "react";
 import {
   DndContext,
-  KeyboardSensor,
-  PointerSensor,
   useDraggable,
   useDroppable,
   pointerWithin,
-  useSensor,
-  useSensors,
   type DragEndEvent,
 } from "@dnd-kit/core";
 import { loadGoogleMaps } from "@/lib/client/maps-loader";
@@ -78,7 +75,7 @@ export function DispatchBoard(props: {
   const dndId = useId();
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }), useSensor(KeyboardSensor));
+  const sensors = useBoardSensors();
   const techColor = useMemo(() => new Map(props.techs.map((t) => [t.id, t.color])), [props.techs]);
   const step = props.view === "week" ? 7 : 1;
 
@@ -154,8 +151,8 @@ export function DispatchBoard(props: {
           markDragged();
           onDragEnd(e);
         }} collisionDetection={pointerWithin}>
-        <div className="grid flex-1 gap-3 px-4 pb-4 xl:grid-cols-[260px_1fr]">
-          <aside className="space-y-3">
+        <div className="grid flex-1 gap-3 px-4 pb-4 lg:grid-cols-[240px_1fr]">
+          <aside className="grid content-start gap-3 md:grid-cols-2 lg:grid-cols-1">
             <section className="card p-3">
               <h2 className="text-sm font-semibold">To schedule ({props.unscheduled.length})</h2>
               <p className="text-xs text-gray-500">Drag onto a tech and time.</p>
@@ -248,7 +245,7 @@ function DayGrid({ dayStart, techs, visits, busy, techColor }: { dayStart: numbe
   const height = (a: number, b: number) => Math.max(ROW_PX * 2, ((b - a) / 60_000 / SLOT_MIN) * ROW_PX);
   return (
     <div className="card overflow-x-auto">
-      <div className="grid min-w-[640px]" style={{ gridTemplateColumns: `56px repeat(${techs.length}, minmax(160px, 1fr))` }}>
+      <div className="grid min-w-[560px]" style={{ gridTemplateColumns: `52px repeat(${techs.length}, minmax(140px, 1fr))` }}>
         <div className="border-b p-2" />
         {techs.map((t) => (
           <div key={t.id} className="border-b border-l p-2 text-sm font-semibold" style={{ color: t.color }}>
@@ -304,7 +301,7 @@ function DayGrid({ dayStart, techs, visits, busy, techColor }: { dayStart: numbe
 function WeekGrid({ dayStarts, techs, visits, busy, techColor }: { dayStarts: { ymd: string; ms: number }[]; techs: Tech[]; visits: Visit[]; busy: Busy[]; techColor: Map<string, string> }) {
   return (
     <div className="card overflow-x-auto">
-      <div className="grid min-w-[900px]" style={{ gridTemplateColumns: `120px repeat(${dayStarts.length}, minmax(110px, 1fr))` }}>
+      <div className="grid min-w-[760px]" style={{ gridTemplateColumns: `100px repeat(${dayStarts.length}, minmax(90px, 1fr))` }}>
         <div className="border-b p-2" />
         {dayStarts.map((d) => (
           <div key={d.ymd} className="border-b border-l p-2 text-center text-xs font-semibold">

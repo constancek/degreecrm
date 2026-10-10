@@ -48,3 +48,16 @@ body {
     background: white;
   }
 }
+
+/* iPad / touch screens: finger-sized targets (Apple's 44pt minimum). */
+@media (pointer: coarse) {
+  .btn,
+  .btn-primary,
+  .btn-secondary {
+    min-height: 44px;
+  }
+  .input {
+    min-height: 44px;
+    font-size: 16px; /* also stops iOS zooming into fields */
+  }
+}

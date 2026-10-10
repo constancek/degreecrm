@@ -1,15 +1,12 @@
 "use client";
 
+import { useBoardSensors } from "@/lib/client/dnd-sensors";
 import Link from "next/link";
 import { useId, useOptimistic, useState, useTransition } from "react";
 import {
   DndContext,
-  PointerSensor,
-  KeyboardSensor,
   useDraggable,
   useDroppable,
-  useSensor,
-  useSensors,
   type DragEndEvent,
 } from "@dnd-kit/core";
 import { STAGES, tradeLabel } from "@/lib/stages";
@@ -45,11 +42,7 @@ export function PipelineBoard({ leads, showLost }: { leads: BoardLead[]; showLos
   );
   const [, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
-  const sensors = useSensors(
-    // A small distance threshold keeps plain clicks working as links.
-    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
-    useSensor(KeyboardSensor),
-  );
+  const sensors = useBoardSensors();
 
   // A stable id keeps dnd-kit's aria ids identical on server and client (no hydration mismatch).
   const dndId = useId();

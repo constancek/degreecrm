@@ -33,18 +33,18 @@ export default async function CrmLayout({ children }: LayoutProps<"/">) {
             <Link href="/my-day" className="hover:text-white">
               My day
             </Link>
-            <Link href="/leads/new" className="hidden hover:text-white md:inline">
-              New lead
-            </Link>
-            <Link href="/pricebook" className="hidden hover:text-white md:inline">
+            <Link href="/pricebook" className="hidden hover:text-white lg:inline">
               Price book
             </Link>
             <Link href="/settings" className="hover:text-white">
               Settings
             </Link>
           </nav>
-          <div className="ml-auto flex items-center gap-3 text-sm">
-            <span className="hidden text-white/80 sm:inline">
+          <div className="ml-auto flex shrink-0 items-center gap-3 text-sm">
+            <Link href="/leads/new" className="hidden rounded-md bg-white/15 px-3 py-1.5 font-medium whitespace-nowrap text-white hover:bg-white/25 md:inline-block">
+              + New lead
+            </Link>
+            <span className="hidden whitespace-nowrap text-white/80 xl:inline">
               {user.name} · {user.role}
             </span>
             <form action={logout}>

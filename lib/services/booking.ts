@@ -30,10 +30,14 @@ export const bookingInput = z
     message: z.string().trim().min(3, "Tell us a little about what's going on").max(5000),
     date: ymd,
     window: z.enum(windowIds, { message: "Pick an arrival window" }),
-    altDate: ymd.optional(),
-    altWindow: z.enum(windowIds).optional(),
+    // The website form always asks for two choices; a third is optional.
+    altDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Pick a day for your second choice"),
+    altWindow: z.enum(windowIds, { message: "Pick a window for your second choice" }),
+    alt2Date: ymd.optional(),
+    alt2Window: z.enum(windowIds).optional(),
   })
-  .refine((v) => !v.altDate || v.altWindow, { message: "Pick a window for your second choice", path: ["altWindow"] });
+  .refine((v) => !(v.altDate === v.date && v.altWindow === v.window), { message: "Your second choice should be different from your first", path: ["altDate"] })
+  .refine((v) => !v.alt2Date || v.alt2Window, { message: "Pick a window for your third choice", path: ["alt2Window"] });
 
 export type BookingInput = z.input<typeof bookingInput>;
 
@@ -44,18 +48,28 @@ function assertBookable(date: string, now: Date) {
 /** Website form or staff/Claude on a call. Creates the lead (or uses `leadId`) and the request. */
 export async function requestBooking(
   actor: Actor,
-  raw: BookingInput | (Omit<BookingInput, "name" | "phone" | "street" | "trade" | "message"> & { leadId: string; message?: string }),
+  raw:
+    | BookingInput
+    | { leadId: string; date: string; window: string; altDate?: string; altWindow?: string; alt2Date?: string; alt2Window?: string; message?: string },
   meta: { ip: string | null; source: "website" | "claude" | "staff"; now?: Date },
 ) {
   const now = meta.now ?? new Date();
   let leadId: string;
-  let input: { date: string; window: string; altDate?: string; altWindow?: string; message?: string };
+  let input: { date: string; window: string; altDate?: string; altWindow?: string; alt2Date?: string; alt2Window?: string; message?: string };
 
   if ("leadId" in raw && raw.leadId) {
     const lead = await db.lead.findUnique({ where: { id: raw.leadId } });
     if (!lead) throw new NotFoundError("Lead not found");
     const parsed = z
-      .object({ date: ymd, window: z.enum(windowIds), altDate: ymd.optional(), altWindow: z.enum(windowIds).optional(), message: z.string().optional() })
+      .object({
+        date: ymd,
+        window: z.enum(windowIds),
+        altDate: ymd.optional(),
+        altWindow: z.enum(windowIds).optional(),
+        alt2Date: ymd.optional(),
+        alt2Window: z.enum(windowIds).optional(),
+        message: z.string().optional(),
+      })
       .parse(raw);
     leadId = lead.id;
     input = parsed;
@@ -80,15 +94,30 @@ export async function requestBooking(
   }
   assertBookable(input.date, now);
   if (input.altDate) assertBookable(input.altDate, now);
+  if (input.alt2Date) assertBookable(input.alt2Date, now);
 
   const lead = await db.lead.findUniqueOrThrow({ where: { id: leadId }, include: { customer: true, property: true, assignedTo: { select: { name: true } } } });
   const request = await db.$transaction(async (tx) => {
     // One open request per lead: a new one replaces the old.
     await tx.bookingRequest.updateMany({ where: { leadId, status: "pending" }, data: { status: "declined" } });
     const r = await tx.bookingRequest.create({
-      data: { leadId, date: input.date, window: input.window, altDate: input.altDate ?? null, altWindow: input.altWindow ?? null, source: meta.source },
+      data: {
+        leadId,
+        date: input.date,
+        window: input.window,
+        altDate: input.altDate ?? null,
+        altWindow: input.altWindow ?? null,
+        alt2Date: input.alt2Date ?? null,
+        alt2Window: input.alt2Window ?? null,
+        source: meta.source,
+      },
     });
-    const wanted = `${dateLabel(input.date)}, ${windowLabel(input.window)}${input.altDate ? ` (or ${dateLabel(input.altDate)}, ${windowLabel(input.altWindow)})` : ""}`;
+    const choices = [
+      [input.date, input.window],
+      [input.altDate, input.altWindow],
+      [input.alt2Date, input.alt2Window],
+    ].filter((c): c is [string, string] => Boolean(c[0] && c[1]));
+    const wanted = choices.map(([d, w]) => `${dateLabel(d)}, ${windowLabel(w)}`).join(" or ");
     await recordActivity(tx, actor, {
       type: "booking_request",
       leadId,

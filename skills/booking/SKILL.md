@@ -5,13 +5,13 @@ description: Book a Degree of Comfort estimate appointment from a phone call or 
 
 # Booking an estimate in the Degree of Comfort CRM
 
-Customers get a day and a **3-hour arrival window** (9 am–12 pm, 12–3 pm or 3–6 pm, Monday to Saturday, up to three weeks out). A request isn't a confirmed appointment until the owner confirms it; only then does the customer get the confirmation text and the visit land on a tech's calendar.
+Customers get a day and an **arrival window**: 9 am–12 pm, 12–3 pm, 3–6 pm, or all day (9 am–6 pm), Monday to Saturday, up to three weeks out. Always collect **at least two choices** (a third is welcome). A request isn't a confirmed appointment until the owner confirms it; only then does the customer get the confirmation text and the visit land on a tech's calendar.
 
 ## Taking a request (anyone on the team)
 
 1. **Find or create the customer.** Use `search_leads` (name, phone digits, street). If they're already a lead, use that `leadId`. Otherwise collect: name, mobile phone, service address with ZIP, trade (HVAC, plumbing or electrical) and a sentence about the problem.
 2. **Offer windows.** Call `booking_windows` and suggest two or three options, favoring windows with fewer `alreadyBooked`. Read them as "Tuesday the 14th, between 9 and noon".
-3. **Record it.** Call `request_booking` with the chosen `date` and `window` (and a second choice if they gave one). Tell the user the request is in and the owner will confirm by text. Don't tell the customer it's confirmed.
+3. **Record it.** Call `request_booking` with the first choice (`date`, `window`), the second (`altDate`, `altWindow`) and any third (`alt2Date`, `alt2Window`). Tell the user the request is in and the owner will confirm by text. Don't tell the customer it's confirmed.
 
 ## Confirming (owner)
 

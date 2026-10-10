@@ -173,3 +173,58 @@ export async function requestFreshLink(p: ClientProposal) {
   });
   await flushOutboxSoon();
 }
+
+// ---- "Present to customer": staff open the proposal on their own device without the phone check ----
+
+const PRESENT_LINK_TTL_MS = 10 * 60_000;
+const PRESENT_SESSION_HOURS = 12;
+
+function presentSig(kind: "link" | "session", proposalId: string, userId: string, exp: number) {
+  return createHmac("sha256", secret()).update(`present-${kind}:${proposalId}:${userId}:${exp}`).digest("base64url");
+}
+
+/** One-time-ish link (10 minutes) the CRM hands to a signed-in staff member. */
+export function presentLinkToken(proposalId: string, userId: string) {
+  const exp = Date.now() + PRESENT_LINK_TTL_MS;
+  return `${userId}.${exp}.${presentSig("link", proposalId, userId, exp)}`;
+}
+
+function verify(kind: "link" | "session", proposalId: string, value: string | undefined): string | null {
+  const [userId, expStr, sig] = (value ?? "").split(".");
+  const exp = Number(expStr);
+  if (!userId || !sig || !Number.isFinite(exp) || exp < Date.now()) return null;
+  const a = Buffer.from(sig);
+  const b = Buffer.from(presentSig(kind, proposalId, userId, exp));
+  return a.length === b.length && timingSafeEqual(a, b) ? userId : null;
+}
+
+export function verifyPresentLink(proposalId: string, t: string | null) {
+  return verify("link", proposalId, t ?? undefined);
+}
+
+export function presentCookieName(proposalId: string) {
+  return `doc_present_${proposalId}`;
+}
+
+export function presentCookieValue(proposalId: string, userId: string) {
+  const exp = Date.now() + PRESENT_SESSION_HOURS * 3_600_000;
+  return { value: `${userId}.${exp}.${presentSig("session", proposalId, userId, exp)}`, maxAge: PRESENT_SESSION_HOURS * 3600 };
+}
+
+/** The staff user presenting on this device, if any. */
+export async function presenterFor(proposalId: string, cookieValue: string | undefined) {
+  const userId = verify("session", proposalId, cookieValue);
+  if (!userId) return null;
+  return db.user.findFirst({ where: { id: userId, active: true }, select: { id: true, name: true } });
+}
+
+export async function recordPresented(p: ClientProposal, user: { id: string; name: string }) {
+  await db.$transaction((tx) =>
+    recordActivity(tx, { kind: "user", id: user.id, role: "tech", name: user.name, email: "" }, {
+      type: "proposal_presented",
+      leadId: p.leadId,
+      body: `Opened the proposal to show the customer in person`,
+      data: { proposalId: p.id },
+    }),
+  );
+}

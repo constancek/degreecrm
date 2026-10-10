@@ -28,7 +28,8 @@ export const signInput = z
   .object({
     optionId: z.string().min(1),
     name: z.string().trim().min(2, "Enter your full name").max(200),
-    email: z.string().trim().min(3, "Enter your email so we can send you the signed copy").max(200),
+    // Optional when we can text the copy instead (phone on file).
+    email: z.string().trim().max(200).optional().transform((v) => v || undefined),
     termsAccepted: z.literal(true, { message: "Please agree to the Terms & Conditions" }),
     esignConsent: z.literal(true, { message: "Please agree to sign electronically" }),
     signature: z.discriminatedUnion("type", [
@@ -68,10 +69,15 @@ function decodeSignatureImage(dataUrl: string): Buffer {
 }
 
 /** The customer signs on the proposal page. Returns once the signature is recorded; the PDF follows. */
-export async function signProposal(p: ClientProposal, raw: SignInput, meta: { ip: string | null; userAgent: string | null; phoneVerified: boolean }) {
+export async function signProposal(
+  p: ClientProposal,
+  raw: SignInput,
+  meta: { ip: string | null; userAgent: string | null; phoneVerified: boolean; presentedByName?: string | null },
+) {
   const input = signInput.parse(raw);
-  const email = normalizeEmail(input.email);
-  if (!email) throw new ValidationError("That email address doesn't look right");
+  const email = input.email ? normalizeEmail(input.email) : (p.lead.customer.email ?? null);
+  if (input.email && !email) throw new ValidationError("That email address doesn't look right");
+  if (!email && !p.lead.customer.phone) throw new ValidationError("Enter your email so we can send you the signed copy");
   if (p.status === "signed") throw new ValidationError("This proposal is already signed");
   const option = p.options.find((o) => o.id === input.optionId);
   if (!option) throw new ValidationError("Choose an option first");
@@ -83,7 +89,7 @@ export async function signProposal(p: ClientProposal, raw: SignInput, meta: { ip
     signatureImagePath = `proposals/${p.id}/signature.png`;
     await getBlobStore().put(signatureImagePath, png, "image/png");
   }
-  if (!p.lead.customer.email) await db.customer.update({ where: { id: p.lead.customerId }, data: { email } });
+  if (email && !p.lead.customer.email) await db.customer.update({ where: { id: p.lead.customerId }, data: { email } });
 
   const termsChecked = await db.activity.findFirst({
     where: { type: "terms_checked", leadId: p.leadId, data: { path: ["proposalId"], equals: p.id } },
@@ -99,10 +105,11 @@ export async function signProposal(p: ClientProposal, raw: SignInput, meta: { ip
       typedSignature: input.signature.type === "typed" ? input.signature.text : null,
       signatureImagePath,
       signerName: input.name,
-      signerEmail: email,
+      signerEmail: email ?? "",
       ip: meta.ip,
       userAgent: meta.userAgent,
       phoneVerified: meta.phoneVerified,
+      presentedByName: meta.presentedByName ?? null,
       consentAt: now,
       signedAt: now,
       termsAcceptedAt: termsChecked?.createdAt ?? now,
@@ -137,6 +144,7 @@ export async function recordPaperApproval(actor: Actor, proposalId: string, inpu
       ip: null,
       userAgent: input.note ? `Recorded by owner: ${input.note}` : "Recorded by owner",
       phoneVerified: false,
+      presentedByName: null,
       consentAt: null,
       signedAt: now,
       termsAcceptedAt: now,
@@ -156,6 +164,7 @@ type SignatureFields = {
   ip: string | null;
   userAgent: string | null;
   phoneVerified: boolean;
+  presentedByName: string | null;
   consentAt: Date | null;
   signedAt: Date;
   termsAcceptedAt: Date;

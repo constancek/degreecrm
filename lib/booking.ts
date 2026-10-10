@@ -4,6 +4,7 @@ export const WINDOWS = [
   { id: "09-12", label: "9 am – 12 pm", startHour: 9, endHour: 12 },
   { id: "12-15", label: "12 pm – 3 pm", startHour: 12, endHour: 15 },
   { id: "15-18", label: "3 pm – 6 pm", startHour: 15, endHour: 18 },
+  { id: "09-18", label: "All day (9 am – 6 pm)", startHour: 9, endHour: 18 },
 ] as const;
 
 export type WindowId = (typeof WINDOWS)[number]["id"];
@@ -42,4 +43,9 @@ export function bookableDates(now = new Date()): { ymd: string; label: string }[
 
 export function dateLabel(ymd: string): string {
   return new Intl.DateTimeFormat("en-US", { timeZone: TZ, weekday: "short", month: "short", day: "numeric" }).format(new Date(`${ymd}T16:00:00Z`));
+}
+
+/** "Tue, Oct 14 between 9 AM and 12 PM" when the visit matches an arrival window. */
+export function windowForTimes(startHourEt: number, endHourEt: number) {
+  return WINDOWS.find((w) => w.startHour === startHourEt && w.endHour === endHourEt) ?? null;
 }
