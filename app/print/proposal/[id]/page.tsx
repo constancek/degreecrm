@@ -14,6 +14,7 @@ import {
   CompanyHeader,
   KeyTerms,
   LineItemTable,
+  PaymentSchedule,
   OptionPrice,
   ProposalIntro,
 } from "@/components/proposal/proposal-parts";
@@ -34,6 +35,7 @@ export default async function PrintProposal({ params, searchParams }: PageProps<
       lead: { include: { customer: true, property: true } },
       terms: true,
       signature: true,
+      milestones: { orderBy: { sortOrder: "asc" } },
     },
   });
   if (!p) notFound();
@@ -61,7 +63,7 @@ export default async function PrintProposal({ params, searchParams }: PageProps<
       <ProposalIntro view={view} />
 
       <section className="mt-6 rounded-lg border-2 border-brand p-5 break-inside-avoid">
-        <p className="text-xs font-semibold tracking-wide text-gray-500 uppercase">Selected option · {TIER_LABELS[option.tier]}</p>
+        <p className="text-xs font-semibold tracking-wide text-gray-500 uppercase">Selected package · {TIER_LABELS[option.tier]}</p>
         <div className="mt-1 flex items-start justify-between gap-6">
           <h2 className="text-xl font-semibold">{option.title}</h2>
           <OptionPrice option={option} taxLabel={view.taxLabel} />
@@ -80,7 +82,7 @@ export default async function PrintProposal({ params, searchParams }: PageProps<
 
       {others.length > 0 && (
         <p className="mt-3 text-xs text-gray-500">
-          Other options offered: {others.map((o) => `${o.title} (${formatCents(o.totalCents)})`).join(", ")}.
+          Other packages offered: {others.map((o) => `${o.title} (${formatCents(o.totalCents)})`).join(", ")}.
         </p>
       )}
 
@@ -89,6 +91,12 @@ export default async function PrintProposal({ params, searchParams }: PageProps<
         <p className="mt-1 text-sm">
           Deposit due on approval: {formatCents(option.depositCents, { cents: true })} ({option.depositPercent}%).
         </p>
+        {option.schedule.length > 0 && (
+          <div className="mt-2">
+            <h4 className="text-sm font-semibold">Payment schedule</h4>
+            <PaymentSchedule option={option} />
+          </div>
+        )}
         <div className="mt-2">
           <KeyTerms lines={option.keyTerms} />
         </div>
@@ -112,7 +120,7 @@ export default async function PrintProposal({ params, searchParams }: PageProps<
             {view.termsVersion ? ` (version ${view.termsVersion})` : ""} in this document.
           </p>
           <p className="mt-1 text-xs text-gray-500">
-            {view.customerName} · {view.address} · Proposal v{view.version}
+            {view.customerName} · {view.address} · Estimate {view.number}
           </p>
         </div>
         <div className="flex" style={{ gap: "0.5in" }}>
@@ -147,7 +155,7 @@ export default async function PrintProposal({ params, searchParams }: PageProps<
           <dl className="mt-4 grid grid-cols-[2.2in_1fr] gap-x-4 gap-y-1.5">
             <dt className="text-gray-500">Document</dt>
             <dd>
-              Proposal v{p.version} for {view.customerName} · {option.title} · {formatCents(option.totalCents, { cents: true })}
+              Estimate {view.number} for {view.customerName} · {option.title} · {formatCents(option.totalCents, { cents: true })}
             </dd>
             <dt className="text-gray-500">Signed by</dt>
             <dd>

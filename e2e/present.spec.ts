@@ -17,7 +17,10 @@ test("staff present a proposal in person: no phone check, signed copy notes who 
   await page.getByLabel("Job notes").fill("Old furnace, cracked heat exchanger. Wants options.");
   await page.getByRole("button", { name: "Draft with Claude" }).click();
   await page.waitForURL(/\/proposals\//);
-  await page.locator('[data-line="Specialty part not in price book"]').getByLabel("Unit price").fill("300");
+  await page.getByLabel("Essential package price").fill("4200");
+  await page.getByLabel("Premium package price").fill("5600");
+  await page.getByLabel("Supreme package price").fill("7900");
+  await page.locator('[data-line="Specialty part not in price book"]').getByLabel("Add-on unit price").fill("300");
   await page.getByRole("button", { name: "Save changes" }).click();
   await expect(page.getByRole("button", { name: "Saved" })).toBeVisible();
   await page.getByRole("button", { name: "Send proposal" }).click();
@@ -28,7 +31,7 @@ test("staff present a proposal in person: no phone check, signed copy notes who 
   await expect(c.getByText("Presenting in person: Owner")).toBeVisible();
   await expect(c.getByLabel(/last 4 digits/)).toHaveCount(0); // no phone check
 
-  await c.locator('[data-option="good"]').getByRole("button", { name: "Choose this option" }).click();
+  await c.locator('[data-option="good"]').getByRole("button", { name: "Choose this package" }).click();
   await c.getByLabel(/agree to the full/).check();
   await c.getByRole("button", { name: "Type", exact: true }).click();
   await c.getByLabel("Type your name as your signature").fill("Sarah Mitchell");

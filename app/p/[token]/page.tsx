@@ -68,6 +68,14 @@ export default async function ProposalPage({ params }: PageProps<"/p/[token]">) 
     );
   }
 
+  if (state === "declined") {
+    return (
+      <Message title="You declined this estimate">
+        Thanks for letting us know. If anything changes, call {callUs} and we&apos;ll send you a new estimate.
+      </Message>
+    );
+  }
+
   const cookie = (await cookies()).get(gateCookieName(p.id))?.value;
   if (!gateCookieValid(p.id, token, cookie)) {
     return (
@@ -97,6 +105,8 @@ export default async function ProposalPage({ params }: PageProps<"/p/[token]">) 
           acornLink={company.acornLink || null}
           signedCopy={Boolean(sig?.signedPdfPath)}
           customerName={p.lead.customer.name}
+          depositChoice={p.depositChoice}
+          achLink={p.depositInvoiceLink}
         />
       </Shell>
     );

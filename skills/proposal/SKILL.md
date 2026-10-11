@@ -1,6 +1,6 @@
 ---
 name: degree-of-comfort-proposal
-description: Draft a Good/Better/Best proposal for a Degree of Comfort lead in the CRM. Use when a tech or the owner wants to quote a job, price an estimate, write up options for a customer, or turn site notes or a Plaud transcript into a proposal.
+description: Draft a three-package estimate (Essential / Premium / Supreme) for a Degree of Comfort lead in the CRM. Use when a tech or the owner wants to quote a job, price an estimate, write up options for a customer, or turn site notes or a Plaud transcript into a proposal.
 ---
 
 # Drafting a proposal in the Degree of Comfort CRM
@@ -11,15 +11,15 @@ You're helping a Degree of Comfort tech or the owner turn what they saw on site 
 
 1. **Find the lead.** Use `search_leads` (customer name, phone, street) and confirm the right one with the user if there's more than one match. Read it with `get_lead`.
 2. **Gather the facts.** Use the notes the user gives you (often a Plaud transcript). If something that changes the price is missing, such as equipment size or age, access, or what the customer wants, ask once, briefly. Otherwise make a typical assumption and list it.
-3. **Load prices.** Call `get_price_book` for the lead's trade. Prices come only from the price book. Never invent or estimate a dollar amount; if nothing fits a line, leave `priceBookItemId` null and tell the user it will need a price.
+3. **Load the price book.** Call `get_price_book` for the lead's trade and use its ids for scope lines and optional add-ons. Each package is sold at one lump-sum price: ask the user for the Essential, Premium and Supreme prices and never invent or estimate a dollar amount.
 4. **Draft in the chat first.** Show the three options as short lists (title, 4–6 highlights, warranty, line items with qty) and which one you recommend. Wait for the user to confirm or adjust.
-5. **Save it.** Call `create_proposal_draft` with exactly three options: `good`, `better`, `best`. Share the returned `url` and any `linesNeedingPrice` / `sendBlockers`.
+5. **Save it.** Call `create_proposal_draft` with exactly three packages: `good` (Essential), `better` (Premium), `best` (Supreme). Then set each package price the user gave you with `update_proposal_option` (`packagePriceDollars`). Share the returned `url` and any `sendBlockers`.
 6. **Adjust if asked** with `update_proposal_option` (one option at a time; `lineItems` replaces the whole list).
 7. **Sending:** only the owner can send (`send_proposal`), and only after they say so explicitly. Techs: tell the user the owner will review and send it.
 
 ## What good options look like
 
-| Trade | Good | Better | Best |
+| Trade | Essential (good) | Premium (better) | Supreme (best) |
 | --- | --- | --- | --- |
 | HVAC | Repair or base-efficiency replacement, 1-yr labor | Mid-SEER2 equipment, better filtration, 2-yr labor | High-efficiency / variable-speed, IAQ add-ons, 5-yr labor, maintenance plan |
 | Plumbing | Fix the failed part | Replace the fixture or section | Replace plus preventive items (shutoffs, PRV, water heater) |
@@ -32,4 +32,4 @@ You're helping a Degree of Comfort tech or the owner turn what they saw on site 
 
 ## Tone
 
-Plain English a homeowner understands, friendly and direct. No prices, rebate promises, energy-savings figures or completion dates in the text; the app shows prices from the price book.
+Plain English a homeowner understands, friendly and direct. No prices, rebate promises, energy-savings figures or completion dates in the text; the app shows the package prices.

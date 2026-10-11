@@ -33,12 +33,16 @@ test("owner sets up company + price book, drafts with Claude, prices, sends; cus
   await page.getByRole("button", { name: "Draft with Claude" }).click();
   await page.waitForURL(/\/proposals\//);
   await expect(page.getByText("drafted by Claude")).toBeVisible();
-  await expect(page.getByText("1 line(s) still need a price")).toBeVisible();
-
-  // Price the flagged line and save
+  // Packages are lump sums typed by staff; the optional add-on Claude couldn't match needs a price too.
+  await expect(page.getByText("Essential: enter the package price.")).toBeVisible();
+  await expect(page.getByText("Supreme: 1 optional add-on(s) still need a price.")).toBeVisible();
+  await page.getByLabel("Essential package price").fill("6800");
+  await page.getByLabel("Premium package price").fill("8900");
+  await page.getByLabel("Supreme package price").fill("12500");
+  await expect(page.getByTestId("total-good")).toHaveText("$7,330.40"); // 6,800 + 7.8% tax
   const flagged = page.locator('[data-line="Specialty part not in price book"]');
   await expect(flagged.getByText("Needs price")).toBeVisible();
-  await flagged.getByLabel("Unit price").fill("425");
+  await flagged.getByLabel("Add-on unit price").fill("425");
   await page.getByRole("button", { name: "Save changes" }).click();
   await expect(page.getByRole("button", { name: "Saved" })).toBeVisible();
   await expect(page.getByText("Ready to send")).toBeVisible();
@@ -63,9 +67,13 @@ test("owner sets up company + price book, drafts with Claude, prices, sends; cus
   await c.getByLabel(/last 4 digits/).fill("0111");
   await c.getByRole("button", { name: "View proposal" }).click();
 
+  await expect(c.getByText(/^#\d{4}$/)).toBeVisible(); // estimate number
+  await expect(c.getByText("Valid until")).toBeVisible();
   await expect(c.locator("[data-option]")).toHaveCount(3);
+  await expect(c.locator('[data-option="good"]')).toContainText("Essential");
+  await expect(c.locator('[data-option="best"]')).toContainText("Supreme");
   await expect(c.locator('[data-option="better"]')).toContainText("Recommended");
-  await c.locator('[data-option="better"]').getByRole("button", { name: "Choose this option" }).click();
+  await c.locator('[data-option="better"]').getByRole("button", { name: "Choose this package" }).click();
   await expect(c.locator("#approve")).toContainText("You chose");
   await expect(c.locator("#approve")).toContainText("Deposit due on approval");
   const terms = c.getByRole("link", { name: "Terms & Conditions" });
@@ -111,11 +119,16 @@ test("a tech drafts a proposal from Claude over MCP; only the owner can send", a
     options: [opt("good", 3), opt("better", 4), opt("best", 5)],
   });
   expect(draft.status).toBe("draft");
-  expect(draft.options[0].total).toBe("$1,800.26"); // (1,295 + 3 × 125) × 1.078 Hamilton County tax
-  expect(draft.sendBlockers).toEqual([]);
+  expect(draft.options[0]).toMatchObject({ package: "Essential", packagePrice: "not set" });
+  expect(draft.sendBlockers).toContain("Essential: enter the package price.");
 
-  const updated = await mcp.tool("update_proposal_option", { proposalId: draft.proposalId, tier: "best", title: "Premium swap" });
-  expect(updated.options[2].title).toBe("Premium swap");
+  for (const [tier, dollars] of [["good", 1670], ["better", 1900], ["best", 2400]] as const) {
+    await mcp.tool("update_proposal_option", { proposalId: draft.proposalId, tier, packagePriceDollars: dollars });
+  }
+  const updated = await mcp.tool("update_proposal_option", { proposalId: draft.proposalId, tier: "best", title: "Supreme swap" });
+  expect(updated.options[2].title).toBe("Supreme swap");
+  expect(updated.options[0].total).toBe("$1,800.26"); // 1,670 × 1.078 Hamilton County tax
+  expect(updated.sendBlockers).toEqual([]);
 
   await page.goto(`/proposals/${draft.proposalId}`);
   // Techs can't text the link, but can present the estimate on site.

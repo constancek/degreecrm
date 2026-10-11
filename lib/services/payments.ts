@@ -13,6 +13,8 @@ import { depositPercentFor, getCompany } from "./company";
 import { enqueueDiscord, flushOutboxSoon } from "./outbox";
 import { alertOwner, sendCustomerText } from "./messages";
 import type { PaymentMethod } from "@/generated/prisma/enums";
+import { TIER_LABELS } from "@/lib/tiers";
+import { estimateNumber, type DepositChoice } from "@/lib/estimate";
 
 async function loadSigned(proposalId: string) {
   const p = await db.proposal.findUnique({
@@ -36,10 +38,16 @@ export async function depositFor(proposalId: string) {
   return { percent, amountCents: Math.round((option.totalCents * percent) / 100), totalCents: option.totalCents, option, proposal: p };
 }
 
+/** The package as one lump-sum line (what's included goes in the description) plus sales tax. */
 function optionLines(option: Awaited<ReturnType<typeof loadSigned>>["option"], taxLabel: string): QboLine[] {
-  const lines: QboLine[] = option.lineItems
-    .filter((l) => !l.isOptional)
-    .map((l) => ({ description: l.description, qty: l.qty, unitCents: l.unitCents }));
+  const scope = option.lineItems.filter((l) => !l.isOptional).map((l) => l.description);
+  const lines: QboLine[] = [
+    {
+      description: `${TIER_LABELS[option.tier]}: ${option.title}${scope.length ? `. Includes: ${scope.join("; ")}` : ""}`.slice(0, 4000),
+      qty: 1,
+      unitCents: option.subtotalCents,
+    },
+  ];
   if (option.taxCents > 0) lines.push({ description: `Sales tax${taxLabel ? ` (${taxLabel})` : ""}`, qty: 1, unitCents: option.taxCents });
   return lines;
 }
@@ -420,6 +428,84 @@ export async function pollServiceFeeInvoices(limit = 30) {
       }
     } catch (err) {
       console.error("[qbo fee poll]", v.id, err);
+    }
+  }
+  return paid;
+}
+
+// ---- Deposit: the customer's choice after signing ---------------------------------------------
+
+/**
+ * Card → the card form; bank transfer (ACH) → a QuickBooks invoice for the deposit whose pay page takes bank
+ * payments (the poll records it when paid); check / in person → the office is told to expect it; financing →
+ * Acorn. Returns the bank-transfer pay link when there is one.
+ */
+export async function chooseDepositMethod(proposalId: string, choice: DepositChoice): Promise<{ payLink?: string | null }> {
+  const { proposal: p, amountCents, percent, option } = await depositFor(proposalId);
+  if (p.depositPaidAt) return {};
+  const customer = SYSTEM("Customer");
+  if (choice === "ach") {
+    if (p.depositInvoiceId) return { payLink: p.depositInvoiceLink };
+    const qbo = await getQuickBooksClient();
+    if (!qbo) throw new ValidationError("Bank transfer isn't available yet. Please choose another way to pay, or call us.");
+    try {
+      const customerId = await quickbooksCustomerId(p.lead.customer, p.lead.property);
+      const invoice = await qbo.createInvoice({
+        customerId: customerId!,
+        lines: [{ description: `Deposit (${percent}%) for ${TIER_LABELS[option.tier]}: ${option.title}, estimate ${estimateNumber(p)}`, qty: 1, unitCents: amountCents }],
+        memo: "Pay by bank transfer (ACH) or card from this invoice.",
+        email: p.lead.customer.email,
+        estimateId: p.quickbooksEstimateId,
+      });
+      if (p.lead.customer.email) await qbo.sendInvoice(invoice.id, p.lead.customer.email);
+      await db.$transaction(async (tx) => {
+        await tx.proposal.update({ where: { id: p.id }, data: { depositChoice: "ach", depositInvoiceId: invoice.id, depositInvoiceLink: invoice.link } });
+        await recordActivity(tx, customer, {
+          type: "deposit_choice",
+          leadId: p.leadId,
+          body: `Chose bank transfer for the ${formatCents(amountCents, { cents: true })} deposit (QuickBooks invoice #${invoice.id})`,
+          data: { proposalId: p.id, choice },
+        });
+      });
+      return { payLink: invoice.link };
+    } catch (err) {
+      await logQuickBooksError(p.leadId, "creating the bank-transfer deposit invoice", err);
+      throw new ValidationError("We couldn't set up the bank transfer. Please choose another way to pay, or call us.");
+    }
+  }
+  await db.$transaction(async (tx) => {
+    await tx.proposal.update({ where: { id: p.id }, data: { depositChoice: choice } });
+    await recordActivity(tx, customer, {
+      type: "deposit_choice",
+      leadId: p.leadId,
+      body: { card: "Chose to pay the deposit by card", check: "Will pay the deposit by check / in person", financing: "Chose Acorn financing" }[choice],
+      data: { proposalId: p.id, choice },
+    });
+  });
+  if (choice === "check") {
+    await alertOwner(`${p.lead.customer.name} signed and will pay the ${formatCents(amountCents, { cents: true })} deposit by check / in person. Record it when it arrives: ${appUrl()}/leads/${p.leadId}`);
+  }
+  if (choice === "financing") await recordFinancingInterest(p.id);
+  return {};
+}
+
+/** Scheduler: bank-transfer (ACH) deposit invoices paid in QuickBooks → deposit recorded, job created. */
+export async function pollDepositInvoices(limit = 30) {
+  const qbo = await getQuickBooksClient();
+  if (!qbo) return 0;
+  const proposals = await db.proposal.findMany({ where: { depositInvoiceId: { not: null }, depositPaidAt: null }, take: limit, orderBy: { updatedAt: "asc" } });
+  let paid = 0;
+  for (const p of proposals) {
+    try {
+      if ((await qbo.invoiceBalanceCents(p.depositInvoiceId!)) > 0) continue;
+      const { amountCents } = await depositFor(p.id);
+      const payment = await db.payment.create({
+        data: { proposalId: p.id, kind: "deposit", method: "ach", amountCents, status: "succeeded", note: `QuickBooks invoice #${p.depositInvoiceId}` },
+      });
+      await markDepositPaid(p.id, payment.id, SYSTEM("Payments"));
+      paid++;
+    } catch (err) {
+      console.error("[qbo deposit poll]", p.id, err);
     }
   }
   return paid;

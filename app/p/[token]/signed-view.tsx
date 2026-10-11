@@ -1,11 +1,12 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { formatCents } from "@/lib/money";
 import type { ProposalView } from "@/lib/proposal-view";
-import { CompanyHeader, LineItemTable, TierBadge } from "@/components/proposal/proposal-parts";
-import { financingAction, payDepositAction } from "./actions";
+import { CompanyHeader, LineItemTable, PaymentSchedule, TierBadge } from "@/components/proposal/proposal-parts";
+import { chooseDepositAction, payDepositAction } from "./actions";
+import type { DepositChoice } from "@/lib/estimate";
 
 export function SignedView(props: {
   view: ProposalView;
@@ -17,6 +18,9 @@ export function SignedView(props: {
   acornLink: string | null;
   signedCopy: boolean;
   customerName: string;
+  /** What the customer picked before (card | ach | check | financing) and the bank-transfer pay link, if any. */
+  depositChoice: string | null;
+  achLink: string | null;
 }) {
   const option = props.view.options.find((o) => o.id === props.optionId)!;
   const phone = props.view.company.phone;
@@ -56,31 +60,15 @@ export function SignedView(props: {
         <section className="mt-6 rounded-xl border border-gray-200 p-5" id="deposit">
           <h2 className="text-lg font-semibold">Pay your deposit</h2>
           <p className="mt-1 text-sm text-gray-700">
-            {formatCents(props.deposit.amountCents, { cents: true })} ({props.deposit.percent}%) reserves your spot on the schedule. The balance is due
-            when the work is complete.
+            {formatCents(props.deposit.amountCents, { cents: true })} ({props.deposit.percent}%) reserves your spot on the schedule.
+            {option.schedule.length ? " The rest follows the payment schedule below." : " The balance is due when the work is complete."}
           </p>
-          {props.canPayByCard ? (
-            <CardForm token={props.token} amountCents={props.deposit.amountCents} tokenizeUrl={props.tokenizeUrl} name={props.customerName} />
-          ) : (
-            <p className="mt-3 rounded-md bg-gray-50 p-3 text-sm">
-              Online card payment is coming soon. Call {phone || "us"} to pay by card, or pay by check at your appointment.
-            </p>
-          )}
-          {props.acornLink && (
-            <div className="mt-5 border-t pt-4">
-              <p className="text-sm text-gray-700">Prefer monthly payments?</p>
-              <a
-                href={props.acornLink}
-                target="_blank"
-                rel="noreferrer"
-                className="btn-secondary mt-2"
-                onClick={() => void financingAction(props.token)}
-              >
-                Pay monthly with Acorn Finance
-              </a>
-              <p className="mt-1 text-xs text-gray-500">Checking your options won&apos;t affect your credit score.</p>
+          {option.schedule.length > 0 && (
+            <div className="mt-3 max-w-md">
+              <PaymentSchedule option={option} />
             </div>
           )}
+          <DepositChooser {...props} />
         </section>
       )}
     </div>
@@ -190,4 +178,112 @@ function PreparingCopy() {
     return () => clearTimeout(t);
   }, [tries, router]);
   return <span className="text-gray-600">Preparing your signed copy… We&apos;ll also email it to you.</span>;
+}
+
+const CHOICE_LABEL: Record<DepositChoice, { title: string; note: string }> = {
+  card: { title: "Credit or debit card", note: "Pay now, online" },
+  ach: { title: "Bank transfer (ACH)", note: "Pay from your bank account online" },
+  check: { title: "Check or in person", note: "Pay your technician or mail a check" },
+  financing: { title: "Monthly payments", note: "Apply with Acorn Finance" },
+};
+
+/** The customer picks how to pay; each choice shows only its own next step. */
+function DepositChooser(props: Parameters<typeof SignedView>[0]) {
+  const router = useRouter();
+  const choices: DepositChoice[] = [
+    ...(props.canPayByCard ? (["card", "ach"] as const) : []),
+    "check",
+    ...(props.acornLink ? (["financing"] as const) : []),
+  ];
+  const initial = (choices as string[]).includes(props.depositChoice ?? "") ? (props.depositChoice as DepositChoice) : null;
+  const [choice, setChoice] = useState<DepositChoice | null>(initial);
+  const [achLink, setAchLink] = useState(props.achLink);
+  const [error, setError] = useState<string | null>(null);
+  const [pending, start] = useTransition();
+  const phone = props.view.company.phone;
+
+  const pick = (c: DepositChoice) => {
+    setChoice(c);
+    setError(null);
+    // Check and bank transfer are recorded when confirmed; card and financing right away.
+    if (c === "card" || c === "financing") start(async () => void (await chooseDepositAction(props.token, c)));
+  };
+  const confirm = (c: "ach" | "check") =>
+    start(async () => {
+      const res = await chooseDepositAction(props.token, c);
+      if (res.error) return setError(res.error);
+      if (c === "ach") setAchLink(res.payLink ?? null);
+      router.refresh();
+    });
+
+  return (
+    <div className="mt-4">
+      <fieldset>
+        <legend className="text-sm font-semibold">How would you like to pay?</legend>
+        <div className="mt-2 grid gap-2 sm:grid-cols-2">
+          {choices.map((c) => (
+            <label
+              key={c}
+              className={`flex min-h-14 cursor-pointer items-start gap-3 rounded-lg border p-3 text-sm ${choice === c ? "border-brand bg-brand/5 ring-2 ring-brand/15" : "border-gray-200"}`}
+            >
+              <input type="radio" name="deposit-choice" className="mt-1" checked={choice === c} onChange={() => pick(c)} />
+              <span>
+                <span className="block font-medium text-gray-900">{CHOICE_LABEL[c].title}</span>
+                <span className="block text-gray-600">{CHOICE_LABEL[c].note}</span>
+              </span>
+            </label>
+          ))}
+        </div>
+      </fieldset>
+
+      <div className="mt-4">
+        {choice === "card" && <CardForm token={props.token} amountCents={props.deposit.amountCents} tokenizeUrl={props.tokenizeUrl} name={props.customerName} />}
+        {choice === "ach" &&
+          (achLink || props.depositChoice === "ach" ? (
+            <div className="space-y-2 text-sm">
+              {achLink ? (
+                <a href={achLink} target="_blank" rel="noreferrer" className="btn-primary">
+                  Pay {formatCents(props.deposit.amountCents, { cents: true })} by bank transfer
+                </a>
+              ) : (
+                <p>We emailed you an invoice with a bank-transfer payment link.</p>
+              )}
+              <p className="text-gray-600">Bank transfers take a few business days to clear. We&apos;ll text you when your deposit arrives.</p>
+            </div>
+          ) : (
+            <button className="btn-primary" disabled={pending} onClick={() => confirm("ach")}>
+              {pending ? "Setting it up…" : "Continue to bank transfer"}
+            </button>
+          ))}
+        {choice === "check" &&
+          (props.depositChoice === "check" ? (
+            <p role="status" className="text-sm text-gray-800">
+              Got it. Make your check payable to {props.view.company.name} and hand it to your technician
+              {props.view.company.address ? `, or mail it to ${props.view.company.address}` : ""}. We&apos;ll confirm when it arrives
+              {phone ? `. Questions? Call ${phone}` : ""}.
+            </p>
+          ) : (
+            <button className="btn-primary" disabled={pending} onClick={() => confirm("check")}>
+              {pending ? "Saving…" : "I'll pay by check or in person"}
+            </button>
+          ))}
+        {choice === "financing" && props.acornLink && (
+          <div className="space-y-1">
+            <a href={props.acornLink} target="_blank" rel="noreferrer" className="btn-primary">
+              Apply with Acorn Finance
+            </a>
+            <p className="text-xs text-gray-600">Checking your options won&apos;t affect your credit score.</p>
+          </div>
+        )}
+      </div>
+      {!props.canPayByCard && (
+        <p className="mt-3 text-sm text-gray-600">Online card and bank payments are coming soon. Call {phone || "us"} if you need another way to pay.</p>
+      )}
+      {error && (
+        <p role="alert" className="mt-3 text-sm text-red-700">
+          {error}
+        </p>
+      )}
+    </div>
+  );
 }

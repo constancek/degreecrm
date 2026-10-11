@@ -1,5 +1,5 @@
-// Claude drafts Good/Better/Best proposals as strict JSON (SPEC.md "Proposals").
-// Claude assembles from the price book; it never sets prices. The service fills prices from price-book ids.
+// Claude drafts three-package estimates (Essential / Premium / Supreme = tier ids good / better / best) as strict JSON.
+// Packages are sold at a lump sum the team types in; Claude writes the scope and never sets prices.
 
 import { readFile } from "node:fs/promises";
 import path from "node:path";
@@ -7,18 +7,19 @@ import Anthropic from "@anthropic-ai/sdk";
 import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
 import { z } from "zod";
 import type { Trade } from "@/generated/prisma/enums";
+import { TIER_LABELS } from "@/lib/tiers";
 
 export const DEFAULT_MODEL = "claude-opus-5";
 
 const draftLineItem = z.object({
-  description: z.string().describe("Customer-facing line description"),
+  description: z.string().describe("Customer-facing scope line (what is included), no prices"),
   qty: z.number().describe("Quantity in the item's unit, e.g. 1, 2, 3.5 hours"),
   unit: z.string().describe("Unit, e.g. ea, hr, ft"),
   priceBookItemId: z
     .string()
     .nullable()
     .describe("id of the matching price book item, or null if nothing in the price book fits"),
-  isOptional: z.boolean().describe("true for optional add-ons that are not included in the option total"),
+  isOptional: z.boolean().describe("true for optional add-ons that are not included in the package price"),
 });
 
 const draftOption = z.object({
@@ -35,7 +36,7 @@ export const proposalDraftSchema = z.object({
   recommendedTier: z.enum(["good", "better", "best"]),
   assumptions: z.array(z.string()),
   exclusions: z.array(z.string()),
-  options: z.array(draftOption).describe("Exactly three options: good, better, best"),
+  options: z.array(draftOption).describe("Exactly three packages: good (Essential), better (Premium), best (Supreme)"),
 });
 
 export type ProposalDraft = z.infer<typeof proposalDraftSchema>;
@@ -128,7 +129,7 @@ export function createMockDrafter(): ProposalDrafter & { calls: DraftInput[] } {
       const pick = (i: number) => input.priceBook[i % Math.max(1, input.priceBook.length)]?.id ?? null;
       const option = (tier: "good" | "better" | "best", n: number) => ({
         tier,
-        title: `${tier[0]!.toUpperCase()}${tier.slice(1)} option`,
+        title: `${TIER_LABELS[tier]} package`,
         summary: `The ${tier} way to fix: ${input.jobTitle}.`,
         highlights: ["Licensed and insured techs", "Clean-up included", "Permit handled", `${n}-year labor warranty`],
         warrantyText: `${n}-year labor warranty`,
@@ -136,7 +137,7 @@ export function createMockDrafter(): ProposalDrafter & { calls: DraftInput[] } {
           { description: "Main repair / equipment", qty: 1, unit: "ea", priceBookItemId: pick(n - 1), isOptional: false },
           { description: "Labor", qty: n * 2, unit: "hr", priceBookItemId: pick(n), isOptional: false },
           ...(tier === "best"
-            ? [{ description: "Specialty part not in price book", qty: 1, unit: "ea", priceBookItemId: null, isOptional: false }]
+            ? [{ description: "Specialty part not in price book", qty: 1, unit: "ea", priceBookItemId: null, isOptional: true }]
             : []),
         ],
       });

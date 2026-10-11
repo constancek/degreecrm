@@ -23,6 +23,8 @@ import { addDaysYmd, easternMidnight, easternYmd } from "@/lib/services/dispatch
 import { WINDOWS, bookableDates, dateLabel, windowLabel } from "@/lib/booking";
 import { confirmBooking, pendingBookings, requestBooking } from "@/lib/services/booking";
 import type { StaffActor } from "@/lib/session";
+import { estimateNumber } from "@/lib/estimate";
+import { TIER_LABELS } from "@/lib/tiers";
 
 // The MCP tools call the same service layer as the web UI, so permissions and side effects
 // (activity log, Discord) are identical. Every call is also written to Activity for audit.
@@ -89,8 +91,9 @@ export function buildMcpServer(actor: StaffActor) {
         `You are connected to the Degree of Comfort CRM as ${actor.name} (${actor.role}). ` +
         "Leads move through a pipeline of stages. Use search_leads to find a lead id, get_lead for details and history, " +
         "create_lead for new service calls, and log_note to record what happened. " +
-        "For proposals: read the lead and get_price_book, draft Good/Better/Best in the chat and confirm with the user, then create_proposal_draft. " +
-        "Prices come only from the price book; lines without a price book id are flagged for the owner to price. " +
+        "For estimates: read the lead and get_price_book, draft the three packages (Essential = tier good, Premium = better, Supreme = best) " +
+        "in the chat and confirm with the user, then create_proposal_draft. Each package is sold at one lump-sum price that the user gives you " +
+        "(update_proposal_option packagePriceDollars); never invent a price. Included lines are the scope list (no prices); only optional add-ons are priced. " +
         "Drafts are reviewed and sent by the owner (send_proposal is owner-only). " +
         (actor.role === "tech" ? "As a tech you only see leads assigned to you." : ""),
     },
@@ -228,7 +231,7 @@ export function buildMcpServer(actor: StaffActor) {
     qty: z.number().positive(),
     unit: z.string().default("ea"),
     priceBookItemId: z.string().nullable().describe("Price book item id, or null if nothing fits (owner prices it)"),
-    isOptional: z.boolean().default(false).describe("Optional add-on, not included in the total"),
+    isOptional: z.boolean().default(false).describe("Optional add-on, priced separately and not included in the package price"),
   });
   const optionSchema = z.object({
     tier: tierEnum,
@@ -264,8 +267,9 @@ export function buildMcpServer(actor: StaffActor) {
     {
       title: "Create proposal draft",
       description:
-        "Save a Good/Better/Best proposal draft on a lead. Exactly three options (good, better, best). Prices are filled from the " +
-        "price book; lines with priceBookItemId null are flagged 'needs price'. The draft is not sent to the customer.",
+        "Save an estimate draft on a lead: exactly three packages, tier good = Essential, better = Premium, best = Supreme. " +
+        "Line items are the scope the customer reads; optional add-ons take their price book price. Package prices start empty; set them " +
+        "with update_proposal_option once the user tells you. The draft is not sent to the customer.",
       inputSchema: {
         leadId: z.string(),
         summary: z.string().describe("One paragraph for the customer"),
@@ -287,8 +291,9 @@ export function buildMcpServer(actor: StaffActor) {
     {
       title: "Update proposal option",
       description:
-        "Change one option (good/better/best) of a draft proposal. Fields you omit stay as they are. lineItems replaces the whole list. " +
-        "Price book lines take the price book price" + (actor.role === "owner" ? "; custom lines may set unitPriceDollars." : "; custom lines are left for the owner to price."),
+        "Change one package (good = Essential, better = Premium, best = Supreme) of a draft estimate. Fields you omit stay as they are. " +
+        "packagePriceDollars sets the lump-sum package price (before tax) the user gave you. lineItems replaces the whole list; only optional " +
+        "add-ons carry a price (price book price" + (actor.role === "owner" ? ", or unitPriceDollars for a custom add-on)." : "; custom add-ons are left for the owner to price)."),
       inputSchema: {
         proposalId: z.string(),
         tier: tierEnum,
@@ -296,6 +301,7 @@ export function buildMcpServer(actor: StaffActor) {
         summary: z.string().optional(),
         highlights: z.array(z.string()).optional(),
         warrantyText: z.string().optional(),
+        packagePriceDollars: z.number().min(0).optional().describe("Lump-sum package price before tax, exactly as the user stated it"),
         lineItems: z.array(lineSchema.extend({ unitPriceDollars: z.number().min(0).optional() })).optional(),
       },
     },
@@ -306,6 +312,7 @@ export function buildMcpServer(actor: StaffActor) {
       summary?: string;
       highlights?: string[];
       warrantyText?: string;
+      packagePriceDollars?: number;
       lineItems?: (z.infer<typeof lineSchema> & { unitPriceDollars?: number })[];
     }) => {
       const p = await getProposal(actor, a.proposalId);
@@ -315,6 +322,7 @@ export function buildMcpServer(actor: StaffActor) {
       if (a.summary !== undefined) option.summary = a.summary;
       if (a.highlights !== undefined) option.highlights = a.highlights;
       if (a.warrantyText !== undefined) option.warrantyText = a.warrantyText;
+      if (a.packagePriceDollars !== undefined) option.priceCents = Math.round(a.packagePriceDollars * 100);
       if (a.lineItems) {
         const ids = a.lineItems.map((l) => l.priceBookItemId).filter((x): x is string => Boolean(x));
         const book = new Map((await db.priceBookItem.findMany({ where: { id: { in: ids } } })).map((i) => [i.id, i]));
@@ -568,13 +576,16 @@ export function buildMcpServer(actor: StaffActor) {
 function proposalSummary(p: FullProposal) {
   return {
     proposalId: p.id,
+    estimate: estimateNumber(p),
     version: p.version,
     status: p.status,
     url: `${appUrl()}/proposals/${p.id}`,
     tax: p.taxLabel || "no rate found for this address",
     options: p.options.map((o) => ({
       tier: o.tier,
+      package: TIER_LABELS[o.tier],
       title: o.title,
+      packagePrice: o.priceCents ? formatCents(o.priceCents, { cents: true }) : "not set",
       total: formatCents(o.totalCents, { cents: true }),
       linesNeedingPrice: o.lineItems.filter((l) => l.needsPrice).map((l) => l.description),
     })),

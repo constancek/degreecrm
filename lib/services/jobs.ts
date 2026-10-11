@@ -2,7 +2,7 @@
 
 import { db } from "@/lib/db";
 import { appUrl } from "@/lib/env";
-import { formatCents } from "@/lib/money";
+import { formatCents, percentOf } from "@/lib/money";
 import type { Prisma } from "@/generated/prisma/client";
 import { QuickBooksError } from "@/lib/integrations/quickbooks";
 import { getQuickBooksClient } from "./quickbooks-auth";
@@ -16,7 +16,7 @@ import { getCompany } from "./company";
 
 const jobInclude = {
   lead: { include: { customer: true, property: true, assignedTo: { select: { id: true, name: true } } } },
-  proposal: { include: { options: { include: { lineItems: { orderBy: { sortOrder: "asc" } } } } } },
+  proposal: { include: { options: { include: { lineItems: { orderBy: { sortOrder: "asc" } } } }, milestones: { orderBy: { sortOrder: "asc" } } } },
   visits: { orderBy: { start: "asc" }, include: { tech: { select: { id: true, name: true } } } },
   payments: { orderBy: { createdAt: "asc" } },
   assignedTo: { select: { id: true, name: true } },
@@ -66,12 +66,69 @@ export async function completeJob(actor: Actor, jobId: string) {
   await createFinalInvoice(actor, jobId).catch((e) => console.error("[final invoice]", e));
 }
 
+/** Milestone invoices already sent but not paid yet; the final invoice doesn't bill them again. */
+async function openMilestoneCents(proposalId: string) {
+  const open = await db.paymentMilestone.findMany({ where: { proposalId, invoiceId: { not: null }, paidAt: null } });
+  return open.reduce((s, m) => s + (m.amountCents ?? 0), 0);
+}
+
+async function qboCustomerFor(qbo: NonNullable<Awaited<ReturnType<typeof getQuickBooksClient>>>, lead: { customerId: string; customer: { name: string; email: string | null; phone: string | null; quickbooksId: string | null }; property: { street: string; city: string; state: string; zip: string | null } | null }) {
+  if (lead.customer.quickbooksId) return lead.customer.quickbooksId;
+  const id = await qbo.findOrCreateCustomer({
+    name: lead.customer.name,
+    email: lead.customer.email,
+    phone: lead.customer.phone,
+    address: lead.property ? { street: lead.property.street, city: lead.property.city, state: lead.property.state, zip: lead.property.zip } : null,
+  });
+  await db.customer.update({ where: { id: lead.customerId }, data: { quickbooksId: id } });
+  return id;
+}
+
+/**
+ * Payment schedule: the owner invoices one milestone (e.g. "Rough-in complete, 40%") during the job. The last
+ * milestone isn't invoiced here; it's the final invoice for the balance when the job is complete.
+ */
+export async function createMilestoneInvoice(actor: Actor, jobId: string, milestoneId: string) {
+  if (!isOwner(actor)) throw new ForbiddenError("Only the owner can send invoices");
+  const job = await db.job.findUniqueOrThrow({ where: { id: jobId }, include: { lead: { include: { customer: true, property: true } }, proposal: { include: { milestones: { orderBy: { sortOrder: "asc" } } } } } });
+  const milestones = job.proposal.milestones;
+  const m = milestones.find((x) => x.id === milestoneId);
+  if (!m) throw new NotFoundError("Milestone not found");
+  if (m.id === milestones.at(-1)!.id) throw new ValidationError("The last milestone is billed as the final invoice when the job is complete.");
+  if (m.invoiceId) return m;
+  const qbo = await getQuickBooksClient();
+  if (!qbo) throw new ValidationError("Connect QuickBooks in Settings to send milestone invoices.");
+  const amount = percentOf(job.totalCents, m.percent);
+  const invoice = await qbo.createInvoice({
+    customerId: await qboCustomerFor(qbo, job.lead),
+    lines: [{ description: `${job.title}: ${m.label} (${m.percent}% of ${formatCents(job.totalCents, { cents: true })})`, qty: 1, unitCents: amount }],
+    memo: "Thank you for choosing Degree of Comfort.",
+    email: job.lead.customer.email,
+    estimateId: job.quickbooksEstimateId,
+  });
+  if (job.lead.customer.email) await qbo.sendInvoice(invoice.id, job.lead.customer.email);
+  const updated = await db.$transaction(async (tx) => {
+    const row = await tx.paymentMilestone.update({ where: { id: m.id }, data: { invoiceId: invoice.id, invoiceLink: invoice.link, amountCents: amount, invoicedAt: new Date() } });
+    await recordActivity(tx, actor, { type: "invoice_sent", leadId: job.leadId, body: `Milestone invoice "${m.label}" #${invoice.id} for ${formatCents(amount, { cents: true })}` });
+    return row;
+  });
+  const first = job.lead.customer.name.split(/\s+/)[0];
+  await sendCustomerText(actor, {
+    customerId: job.lead.customerId,
+    leadId: job.leadId,
+    body: `Hi ${first}, your ${m.label.toLowerCase()} payment of ${formatCents(amount, { cents: true })} is ready${invoice.link ? `: ${invoice.link}` : " (check your email for the invoice)"}.`,
+  });
+  return updated;
+}
+
 /** Creates and sends the QuickBooks invoice for the balance, then texts the payment link. */
 export async function createFinalInvoice(actor: Actor, jobId: string) {
   const job = await db.job.findUniqueOrThrow({ where: { id: jobId }, include: { payments: true, lead: { include: { customer: true, property: true, assignedTo: { select: { name: true } } } } } });
   if (job.quickbooksInvoiceId) return job;
-  const balance = balanceCents(job);
-  if (balance <= 0) return markJobPaid(jobId, null);
+  const openMilestones = await openMilestoneCents(job.proposalId);
+  const balance = balanceCents(job) - openMilestones;
+  // Everything left is on milestone invoices that are out: nothing new to bill; the poll records them.
+  if (balance <= 0) return openMilestones > 0 ? job : markJobPaid(jobId, null);
   const qbo = await getQuickBooksClient();
   if (!qbo) {
     await db.$transaction((tx) =>
@@ -154,10 +211,26 @@ async function markJobPaid(jobId: string, invoiceAmountCents: number | null) {
   return job;
 }
 
-/** Scheduler: invoiced jobs whose QuickBooks balance hit zero are paid. */
+/** Scheduler: invoiced jobs whose QuickBooks balance hit zero are paid; paid milestone invoices are recorded. */
 export async function pollInvoices(limit = 30) {
   const qbo = await getQuickBooksClient();
   if (!qbo) return 0;
+  const milestones = await db.paymentMilestone.findMany({ where: { invoiceId: { not: null }, paidAt: null }, include: { proposal: { include: { job: true } } }, take: limit });
+  for (const m of milestones) {
+    try {
+      if ((await qbo.invoiceBalanceCents(m.invoiceId!)) > 0 || !m.proposal.job) continue;
+      await db.$transaction(async (tx) => {
+        await tx.paymentMilestone.update({ where: { id: m.id }, data: { paidAt: new Date() } });
+        await tx.payment.create({ data: { jobId: m.proposal.job!.id, proposalId: m.proposalId, kind: "progress", method: "quickbooks_invoice", amountCents: m.amountCents ?? 0, status: "succeeded", note: m.label } });
+        await recordActivity(tx, SYSTEM("Payments"), { type: "payment_received", leadId: m.proposal.leadId, body: `Milestone "${m.label}" paid (${formatCents(m.amountCents ?? 0, { cents: true })})` });
+      });
+      // A completed job waiting only on this milestone is now paid in full.
+      const job = await db.job.findUniqueOrThrow({ where: { id: m.proposal.job.id }, include: { payments: true } });
+      if (job.status === "completed" && balanceCents(job) <= 0) await markJobPaid(job.id, null);
+    } catch (err) {
+      console.error("[qbo milestone poll]", m.id, err);
+    }
+  }
   const jobs = await db.job.findMany({ where: { status: "invoiced", quickbooksInvoiceId: { not: null } }, take: limit, orderBy: { invoiceSentAt: "asc" } });
   let paid = 0;
   for (const job of jobs) {

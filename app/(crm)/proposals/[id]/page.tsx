@@ -15,6 +15,8 @@ import { db } from "@/lib/db";
 import { depositPercentFor } from "@/lib/services/company";
 import { formatCents } from "@/lib/money";
 import { RecordDepositForm } from "@/components/ops/ops-forms";
+import { estimateNumber } from "@/lib/estimate";
+import { TIER_LABELS } from "@/lib/tiers";
 
 export const metadata: Metadata = { title: "Proposal" };
 
@@ -23,6 +25,7 @@ const STATUS: Record<string, string> = {
   sent: "Sent",
   viewed: "Viewed",
   signed: "Signed",
+  declined: "Declined by the customer",
   superseded: "Replaced by a newer version",
 };
 
@@ -33,10 +36,11 @@ export default async function ProposalPage({ params }: PageProps<"/proposals/[id
     if (e instanceof NotFoundError) notFound();
     throw e;
   });
-  const [book, company, textStatus] = await Promise.all([
+  const [book, company, textStatus, changeRequests] = await Promise.all([
     listPriceBook({ trade: p.lead.trade }),
     getCompany(),
     p.token ? proposalTextStatus(p.id) : null,
+    db.activity.findMany({ where: { type: "change_requested", data: { path: ["proposalId"], equals: p.id } }, orderBy: { createdAt: "desc" }, take: 10 }),
   ]);
   const editable = p.status === "draft";
   const [signature, job] = p.status === "signed"
@@ -53,7 +57,7 @@ export default async function ProposalPage({ params }: PageProps<"/proposals/[id
           ← {customer.name}
         </Link>
         <h1 className="mt-1 text-xl font-semibold">
-          Proposal v{p.version}: {p.lead.title}
+          Estimate {estimateNumber(p)}: {p.lead.title}
         </h1>
         <p className="text-sm text-gray-500">
           {STATUS[p.status]}
@@ -78,12 +82,14 @@ export default async function ProposalPage({ params }: PageProps<"/proposals/[id
             recommendedTier: p.recommendedTier,
             assumptions: p.assumptions,
             exclusions: p.exclusions,
+            milestones: p.milestones.map((m) => ({ key: m.id, label: m.label, percent: m.percent })),
             options: p.options.map((o) => ({
               tier: o.tier,
               title: o.title,
               summary: o.summary,
               highlights: o.highlights,
               warrantyText: o.warrantyText,
+              priceCents: o.priceCents,
               lineItems: o.lineItems.map((l) => ({
                 key: l.id,
                 description: l.description,
@@ -105,6 +111,23 @@ export default async function ProposalPage({ params }: PageProps<"/proposals/[id
       </div>
 
       <aside className="space-y-4">
+        {(p.status === "declined" || changeRequests.length > 0) && (
+          <section className="card space-y-2 p-4 text-sm">
+            <h2 className="font-semibold">Customer response</h2>
+            {p.status === "declined" && (
+              <p className="text-red-800">
+                Declined {p.declinedAt ? formatDateTime(p.declinedAt) : ""}: {p.declineReason}
+              </p>
+            )}
+            {changeRequests.map((a) => (
+              <div key={a.id}>
+                <p className="text-xs text-gray-600">Change request · {formatDateTime(a.createdAt)}</p>
+                <p className="whitespace-pre-line text-gray-900">{(a.body ?? "").replace(/^Change request on estimate [^:]+: /, "")}</p>
+              </div>
+            ))}
+            {changeRequests.length > 0 && p.status !== "draft" && <p className="text-xs text-gray-600">Make a revision to send an updated estimate.</p>}
+          </section>
+        )}
         {p.status === "signed" && signedOption && (
           <section className="card space-y-1 border-green-600 p-4 text-sm">
             <h2 className="font-semibold text-green-700">Signed ✓</h2>
@@ -121,6 +144,20 @@ export default async function ProposalPage({ params }: PageProps<"/proposals/[id
               Deposit {formatCents(depositCents, { cents: true })}:{" "}
               {p.depositPaidAt ? <span className="font-medium text-green-700">received {formatDateTime(p.depositPaidAt)}</span> : <span className="text-amber-800">not paid yet</span>}
             </p>
+            {!p.depositPaidAt && p.depositChoice && (
+              <p className="text-gray-700">
+                Customer chose: {{ card: "card", ach: "bank transfer (QuickBooks invoice)", check: "check / in person", financing: "Acorn financing" }[p.depositChoice] ?? p.depositChoice}
+                {p.depositInvoiceLink && (
+                  <>
+                    {" "}
+                    ·{" "}
+                    <a href={p.depositInvoiceLink} target="_blank" rel="noreferrer" className="text-brand underline">
+                      invoice
+                    </a>
+                  </>
+                )}
+              </p>
+            )}
             {job && (
               <Link href={`/jobs/${job.id}`} className="font-medium text-brand underline">
                 Open the job →
@@ -142,7 +179,7 @@ export default async function ProposalPage({ params }: PageProps<"/proposals/[id
             </Link>
             {p.options.map((o) => (
               <a key={o.id} href={`/proposals/${p.id}/pdf?option=${o.id}`} className="btn-secondary">
-                PDF: {o.tier}
+                PDF: {TIER_LABELS[o.tier]}
               </a>
             ))}
           </div>

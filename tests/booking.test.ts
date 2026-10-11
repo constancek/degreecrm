@@ -139,7 +139,7 @@ describe("pipeline drag does the stage's work", () => {
 
     const item = await savePriceBookItem(owner, { trade: "hvac", category: "labor", name: "Labor", unit: "hr", costCents: null, priceCents: 10000 });
     await saveTerms(owner, { body: "# Terms\n\n" + "These terms apply to all work we do. ".repeat(4), keyTerms: "{deposit} deposit." });
-    const opt = (tier: "good" | "better" | "best") => ({ tier, title: tier, lineItems: [{ description: "Labor", qty: 1, priceBookItemId: item.id }] });
+    const opt = (tier: "good" | "better" | "best") => ({ tier, title: tier, priceCents: 10000, lineItems: [{ description: "Labor", qty: 1, priceBookItemId: item.id }] });
     await createProposalDraft(owner, l.id, { summary: "x", options: [opt("good"), opt("better"), opt("best")] });
 
     const send = await planStageMove(owner, l.id, "estimate_sent");

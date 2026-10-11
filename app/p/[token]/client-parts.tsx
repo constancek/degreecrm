@@ -9,10 +9,12 @@ import {
   KeyTerms,
   LineItemTable,
   OptionPrice,
+  PaymentSchedule,
   ProposalIntro,
   TierBadge,
 } from "@/components/proposal/proposal-parts";
-import { freshLinkAction, gateAction, selectOptionAction, signAction, termsCheckedAction } from "./actions";
+import { declineAction, freshLinkAction, gateAction, requestChangesAction, selectOptionAction, signAction, termsCheckedAction } from "./actions";
+import { DECLINE_REASONS } from "@/lib/estimate";
 import { useRouter } from "next/navigation";
 import { SignaturePad, type SignatureValue } from "./signature-pad";
 
@@ -120,7 +122,7 @@ export function ProposalChooser({
       <CompanyHeader view={view} />
       <ProposalIntro view={view} />
 
-      <section className="mt-6 grid gap-4 md:grid-cols-3" aria-label="Options">
+      <section className="mt-6 grid gap-4 md:grid-cols-3" aria-label="Packages">
         {view.options.map((o) => {
           const isSelected = o.id === selected;
           const recommended = o.tier === view.recommendedTier;
@@ -165,7 +167,7 @@ export function ProposalChooser({
                   onClick={() => choose(o.id)}
                   aria-pressed={isSelected}
                 >
-                  {isSelected ? "Selected" : "Choose this option"}
+                  {isSelected ? "Selected" : "Choose this package"}
                 </button>
               </div>
             </article>
@@ -182,6 +184,14 @@ export function ProposalChooser({
             Total {formatCents(chosen.totalCents, { cents: true })} · Deposit due on approval{" "}
             <strong>{formatCents(chosen.depositCents, { cents: true })}</strong> ({chosen.depositPercent}%)
           </p>
+          {chosen.schedule.length > 0 && (
+            <>
+              <h3 className="mt-4 text-sm font-semibold">Payment schedule</h3>
+              <div className="mt-1 max-w-md">
+                <PaymentSchedule option={chosen} />
+              </div>
+            </>
+          )}
           <h3 className="mt-4 text-sm font-semibold">Key terms</h3>
           <div className="mt-1">
             <KeyTerms lines={chosen.keyTerms} />
@@ -264,15 +274,121 @@ export function ProposalChooser({
         </section>
       )}
 
+      <NotReady token={token} />
+
       <AssumptionsAndExclusions view={view} />
 
       <footer className="mt-10 border-t border-gray-200 pt-4 text-center text-xs text-gray-500">
         Questions? Call {view.company.phone || view.company.name}
-        {view.company.email ? ` or email ${view.company.email}` : ""}. Proposal v{view.version}.{" "}
+        {view.company.email ? ` or email ${view.company.email}` : ""}. Estimate {view.number}.{" "}
         <a href="/privacy" className="underline">
           Privacy Policy
         </a>
       </footer>
     </div>
+  );
+}
+
+/** "Not ready to approve?": ask for changes (the estimate stays open) or decline with a reason. */
+function NotReady({ token }: { token: string }) {
+  const router = useRouter();
+  const [open, setOpen] = useState<null | "changes" | "decline">(null);
+  const [message, setMessage] = useState("");
+  const [reason, setReason] = useState("");
+  const [note, setNote] = useState("");
+  const [sent, setSent] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [pending, start] = useTransition();
+
+  const toggle = (which: "changes" | "decline") => {
+    setError(null);
+    setOpen(open === which ? null : which);
+  };
+
+  return (
+    <section className="mt-8 rounded-xl border border-gray-200 p-5" aria-labelledby="not-ready">
+      <h2 id="not-ready" className="text-base font-semibold">
+        Not ready to approve?
+      </h2>
+      <div className="mt-3 flex flex-wrap gap-2">
+        <button className="btn-secondary" aria-expanded={open === "changes"} onClick={() => toggle("changes")}>
+          Request changes
+        </button>
+        <button className="btn-secondary text-red-700" aria-expanded={open === "decline"} onClick={() => toggle("decline")}>
+          Decline
+        </button>
+      </div>
+
+      {open === "changes" &&
+        (sent ? (
+          <p role="status" className="mt-4 text-sm font-medium text-green-800">
+            Thanks, we got your request. We&apos;ll get back to you with an updated estimate.
+          </p>
+        ) : (
+          <div className="mt-4 space-y-3">
+            <label className="label" htmlFor="change-request">
+              What would you like changed?
+            </label>
+            <textarea
+              id="change-request"
+              className="input min-h-24"
+              value={message}
+              onChange={(e) => setMessage(e.target.value)}
+              placeholder="For example: can you quote the Premium package with a different thermostat?"
+            />
+            <button
+              className="btn-primary"
+              disabled={pending || message.trim().length < 3}
+              onClick={() =>
+                start(async () => {
+                  const res = await requestChangesAction(token, message);
+                  if (res.ok) setSent(true);
+                  else setError(res.error ?? "Something went wrong.");
+                })
+              }
+            >
+              {pending ? "Sending…" : "Send request"}
+            </button>
+          </div>
+        ))}
+
+      {open === "decline" && (
+        <div className="mt-4 space-y-3">
+          <fieldset>
+            <legend className="label">Mind telling us why?</legend>
+            <div className="space-y-1">
+              {DECLINE_REASONS.map((r) => (
+                <label key={r} className="flex min-h-9 items-center gap-2 text-sm">
+                  <input type="radio" name="decline-reason" checked={reason === r} onChange={() => setReason(r)} /> {r}
+                </label>
+              ))}
+            </div>
+          </fieldset>
+          <label className="label" htmlFor="decline-note">
+            Anything else? (optional)
+          </label>
+          <textarea id="decline-note" className="input min-h-16" value={note} onChange={(e) => setNote(e.target.value)} />
+          <button
+            className="btn-primary bg-red-700 hover:bg-red-800"
+            disabled={pending || !reason}
+            onClick={() =>
+              start(async () => {
+                const res = await declineAction(token, { reason, note });
+                if (res.ok) router.refresh();
+                else setError(res.error ?? "Something went wrong.");
+              })
+            }
+          >
+            {pending ? "Saving…" : "Decline this estimate"}
+          </button>
+        </div>
+      )}
+
+      {error && (
+        <p role="alert" className="mt-3 text-sm text-red-700">
+          {error}
+        </p>
+      )}
+    </section>
   );
 }

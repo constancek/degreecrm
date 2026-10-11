@@ -195,7 +195,7 @@ describe("on site outcomes", () => {
     await updateVisitStatus(s.mike, v.id, "en_route");
     await updateVisitStatus(s.mike, v.id, "in_progress");
     // The tech writes and presents the estimate on site (no text to the customer).
-    const opt = (tier: "good" | "better" | "best") => ({ tier, title: `Replace capacitor (${tier})`, lineItems: [{ description: "Capacitor swap", qty: 1, priceBookItemId: item.id }] });
+    const opt = (tier: "good" | "better" | "best") => ({ tier, title: `Replace capacitor (${tier})`, priceCents: 28500, lineItems: [{ description: "Capacitor swap", qty: 1, priceBookItemId: item.id }] });
     const draft = await createProposalDraft(s.mike, s.lead.id, { summary: "Repair", options: [opt("good"), opt("better"), opt("best")] });
     await sendProposal(s.mike, draft.id, { textCustomer: false });
     await expect(sendProposal(s.mike, draft.id, { textCustomer: true })).rejects.toBeInstanceOf(ForbiddenError);

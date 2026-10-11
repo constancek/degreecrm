@@ -9,10 +9,11 @@ import {
   useDroppable,
   type DragEndEvent,
 } from "@dnd-kit/core";
-import { formatCents, lineTotalCents, marginPercent, optionTotals, parseDollars } from "@/lib/money";
+import { formatCents, lineTotalCents, packageTotals, parseDollars } from "@/lib/money";
+import { TIER_LABELS as TIER_LABEL } from "@/lib/tiers";
 import type { PriceCategory, Tier, Trade } from "@/generated/prisma/enums";
 import { addToPriceBookAction, saveProposalAction } from "../actions";
-import { Close, Grip } from "@/components/ui/icons";
+import { Close, Grip, Plus } from "@/components/ui/icons";
 
 type Line = {
   key: string;
@@ -23,17 +24,18 @@ type Line = {
   isOptional: boolean;
   priceBookItemId: string | null;
 };
-type Option = { tier: Tier; title: string; summary: string; highlights: string[]; warrantyText: string; lineItems: Line[] };
+type Option = { tier: Tier; title: string; summary: string; highlights: string[]; warrantyText: string; priceCents: number | null; lineItems: Line[] };
+type Milestone = { key: string; label: string; percent: number };
 type Content = {
   summary: string;
   recommendedTier: Tier | null;
   assumptions: string[];
   exclusions: string[];
   options: Option[];
+  milestones: Milestone[];
 };
 type BookItem = { id: string; name: string; unit: string; priceCents: number; costCents: number | null; category: PriceCategory };
 
-const TIER_LABEL: Record<Tier, string> = { good: "Good", better: "Better", best: "Best" };
 let keySeq = 0;
 const newKey = () => `new-${Date.now()}-${keySeq++}`;
 const lines = (s: string) =>
@@ -94,6 +96,7 @@ export function ProposalEditor(props: {
       const res = await saveProposalAction(props.proposalId, {
         ...content,
         depositPercent: override,
+        milestones: content.milestones.map((m) => ({ label: m.label, percent: m.percent })),
         options: content.options.map((o) => ({
           ...o,
           lineItems: o.lineItems.map((l) => ({
@@ -134,7 +137,7 @@ export function ProposalEditor(props: {
         <ListField label="Not included (one per line)" value={content.exclusions} readOnly={ro} onChange={(v) => update((c) => ({ ...c, exclusions: v }))} />
         <div>
           <label className="label" htmlFor="recommended">
-            Recommended option
+            Recommended package
           </label>
           <select
             id="recommended"
@@ -167,6 +170,12 @@ export function ProposalEditor(props: {
             }}
           />
         </div>
+        <ScheduleEditor
+          milestones={content.milestones}
+          depositOverride={depositOverride}
+          readOnly={ro}
+          onChange={(milestones) => update((c) => ({ ...c, milestones }))}
+        />
       </section>
 
       <DndContext id={dndId} sensors={sensors} onDragEnd={onDragEnd}>
@@ -197,7 +206,7 @@ export function ProposalEditor(props: {
           </button>
           {message?.error && <p role="alert" className="text-sm text-red-700">{message.error}</p>}
           {message?.ok && <p role="status" className="text-sm text-green-700">{message.ok}</p>}
-          <p className="ml-auto hidden text-xs text-gray-500 sm:block">Drag a line by its ⠿ handle to move it to another option.</p>
+          <p className="ml-auto hidden text-xs text-gray-500 sm:block">Drag a line by its handle to move it to another package.</p>
         </div>
       )}
     </div>
@@ -241,10 +250,11 @@ function OptionEditor(props: {
 }) {
   const { option: o, readOnly: ro, onChange } = props;
   const { setNodeRef, isOver } = useDroppable({ id: o.tier });
-  const totals = optionTotals(o.lineItems, props.taxRateBps);
-  const margin = marginPercent(
-    o.lineItems.map((l) => ({ ...l, costCents: l.priceBookItemId ? (props.book.get(l.priceBookItemId)?.costCents ?? null) : null })),
-  );
+  const totals = packageTotals(o.priceCents, props.taxRateBps);
+  const [price, setPrice] = useState(o.priceCents != null ? (o.priceCents / 100).toFixed(2) : "");
+  const priceId = useId();
+  const included = o.lineItems.map((l, i) => ({ l, i })).filter(({ l }) => !l.isOptional);
+  const addOns = o.lineItems.map((l, i) => ({ l, i })).filter(({ l }) => l.isOptional);
   const depositPct =
     props.depositOverride.trim() !== ""
       ? Number(props.depositOverride)
@@ -266,10 +276,33 @@ function OptionEditor(props: {
           {formatCents(totals.totalCents, { cents: true })}
         </span>
       </div>
-      <p className="text-right text-xs text-gray-500">
-        {formatCents(totals.subtotalCents, { cents: true })} + {formatCents(totals.taxCents, { cents: true })} tax · deposit {depositPct}%
-        {margin != null ? ` · margin ${margin}%` : ""}
-      </p>
+      <div className={`mt-2 rounded-md p-3 ${o.priceCents ? "bg-gray-50" : "bg-amber-50 ring-1 ring-amber-300"}`}>
+        <label className="label" htmlFor={priceId}>
+          Package price (before tax)
+        </label>
+        <div className="flex items-center gap-2">
+          <span className="text-gray-600">$</span>
+          <input
+            id={priceId}
+            className="input text-lg font-semibold tabular-nums"
+            inputMode="decimal"
+            placeholder="0.00"
+            value={price}
+            readOnly={ro}
+            aria-label={`${TIER_LABEL[o.tier]} package price`}
+            onChange={(e) => {
+              setPrice(e.target.value);
+              const cents = e.target.value.trim() === "" ? null : parseDollars(e.target.value);
+              if (cents != null || e.target.value.trim() === "") onChange((x) => void (x.priceCents = cents));
+            }}
+          />
+        </div>
+        <p className="mt-1 text-xs text-gray-600">
+          {o.priceCents
+            ? `${formatCents(totals.subtotalCents, { cents: true })} + ${formatCents(totals.taxCents, { cents: true })} tax · deposit ${depositPct}%`
+            : "Enter the price the customer pays for this package."}
+        </p>
+      </div>
 
       <div className="mt-3 space-y-2">
         <input
@@ -308,8 +341,10 @@ function OptionEditor(props: {
         />
       </div>
 
-      <div className="mt-4 space-y-2">
-        {o.lineItems.map((l, i) => (
+      <h3 className="mt-4 text-sm font-semibold text-gray-800">What&apos;s included</h3>
+      <p className="text-xs text-gray-600">The customer sees this list without prices.</p>
+      <div className="mt-2 space-y-2">
+        {included.map(({ l, i }) => (
           <LineEditor
             key={l.key}
             tier={o.tier}
@@ -322,8 +357,29 @@ function OptionEditor(props: {
             onRemove={() => onChange((x) => void x.lineItems.splice(i, 1))}
           />
         ))}
-        {o.lineItems.length === 0 && <p className="rounded border border-dashed p-3 text-center text-xs text-gray-500">No lines yet</p>}
+        {included.length === 0 && <p className="rounded border border-dashed p-3 text-center text-xs text-gray-600">No scope lines yet</p>}
       </div>
+      {addOns.length > 0 && (
+        <>
+          <h3 className="mt-4 text-sm font-semibold text-gray-800">Optional add-ons</h3>
+          <p className="text-xs text-gray-600">Priced separately, not in the package total.</p>
+          <div className="mt-2 space-y-2">
+            {addOns.map(({ l, i }) => (
+              <LineEditor
+                key={l.key}
+                tier={o.tier}
+                line={l}
+                readOnly={ro}
+                fromBook={l.priceBookItemId ? props.book.get(l.priceBookItemId) : undefined}
+                trade={props.trade}
+                isOwner={props.isOwner}
+                onChange={(fn) => onChange((x) => fn(x.lineItems[i]!))}
+                onRemove={() => onChange((x) => void x.lineItems.splice(i, 1))}
+              />
+            ))}
+          </div>
+        </>
+      )}
 
       {!ro && <AddLine priceBook={props.priceBook} onAdd={(line) => onChange((x) => void x.lineItems.push(line))} />}
     </section>
@@ -344,7 +400,7 @@ function LineEditor(props: {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id: `${props.tier}:${l.key}`, disabled: ro });
   const [price, setPrice] = useState((l.unitCents / 100).toFixed(2));
   const [saved, setSaved] = useState<string | null>(null);
-  const needsPrice = l.unitCents <= 0;
+  const needsPrice = l.isOptional && l.unitCents <= 0;
   const style = transform ? { transform: `translate(${transform.x}px, ${transform.y}px)` } : undefined;
 
   return (
@@ -392,38 +448,54 @@ function LineEditor(props: {
           aria-label="Unit"
           onChange={(e) => props.onChange((x) => void (x.unit = e.target.value))}
         />
-        <span className="text-gray-500">×</span>
-        <span className="text-gray-500">$</span>
-        <input
-          className="input w-24 py-1 text-sm"
-          inputMode="decimal"
-          value={price}
-          readOnly={ro}
-          aria-label="Unit price"
-          onChange={(e) => {
-            setPrice(e.target.value);
-            const cents = parseDollars(e.target.value);
-            if (cents != null) props.onChange((x) => void (x.unitCents = cents));
-          }}
-        />
-        <span className="ml-auto font-medium">{formatCents(lineTotalCents(l), { cents: true })}</span>
+        {l.isOptional && (
+          <>
+            <span className="text-gray-600">× $</span>
+            <input
+              className="input w-24 py-1 text-sm"
+              inputMode="decimal"
+              value={price}
+              readOnly={ro}
+              aria-label="Add-on unit price"
+              onChange={(e) => {
+                setPrice(e.target.value);
+                const cents = parseDollars(e.target.value);
+                if (cents != null) props.onChange((x) => void (x.unitCents = cents));
+              }}
+            />
+            <span className="ml-auto font-medium tabular-nums">{formatCents(lineTotalCents(l), { cents: true })}</span>
+          </>
+        )}
       </div>
-      <div className="mt-1 flex flex-wrap items-center gap-3 pl-6 text-xs text-gray-500">
+      <div className="mt-1 flex flex-wrap items-center gap-3 pl-10 text-xs text-gray-600">
         <label className="flex items-center gap-1">
-          <input type="checkbox" checked={l.isOptional} disabled={ro} onChange={(e) => props.onChange((x) => void (x.isOptional = e.target.checked))} />
+          <input
+            type="checkbox"
+            checked={l.isOptional}
+            disabled={ro}
+            onChange={(e) => {
+              const on = e.target.checked;
+              props.onChange((x) => {
+                x.isOptional = on;
+                // An add-on starts at its price book price; a scope line carries no price.
+                x.unitCents = on ? (props.fromBook?.priceCents ?? 0) : 0;
+              });
+              setPrice(on ? ((props.fromBook?.priceCents ?? 0) / 100).toFixed(2) : "0.00");
+            }}
+          />
           Optional add-on
         </label>
         {props.fromBook ? (
           <span>
             Price book: {props.fromBook.name}
-            {props.fromBook.priceCents !== l.unitCents ? ` (list ${formatCents(props.fromBook.priceCents, { cents: true })})` : ""}
+            {l.isOptional && props.fromBook.priceCents !== l.unitCents ? ` (list ${formatCents(props.fromBook.priceCents, { cents: true })})` : ""}
           </span>
         ) : needsPrice ? (
           <span className="font-medium text-amber-800">Needs price</span>
         ) : (
           <span>Custom line</span>
         )}
-        {!props.fromBook && !needsPrice && !ro && props.isOwner && !saved && (
+        {l.isOptional && !props.fromBook && !needsPrice && !ro && props.isOwner && !saved && (
           <button
             className="text-brand underline"
             onClick={async () => {
@@ -503,3 +575,75 @@ function AddLine({ priceBook, onAdd }: { priceBook: BookItem[]; onAdd: (l: Line)
     </div>
   );
 }
+
+/** Payment schedule after the deposit. Deposit % + milestones must add up to 100%. */
+function ScheduleEditor(props: { milestones: Milestone[]; depositOverride: string; readOnly: boolean; onChange: (m: Milestone[]) => void }) {
+  const { milestones: ms, readOnly: ro } = props;
+  const deposit = props.depositOverride.trim() === "" ? null : Number(props.depositOverride);
+  const sum = (deposit ?? 0) + ms.reduce((s, m) => s + m.percent, 0);
+  const set = (i: number, patch: Partial<Milestone>) => props.onChange(ms.map((m, j) => (j === i ? { ...m, ...patch } : m)));
+  return (
+    <div className="lg:col-span-2">
+      <h3 className="text-sm font-medium text-gray-700">Payment schedule</h3>
+      {ms.length === 0 ? (
+        <p className="mt-1 text-sm text-gray-600">Deposit on approval, balance when the work is complete.</p>
+      ) : (
+        <table className="mt-1 w-full max-w-lg text-sm">
+          <tbody>
+            <tr>
+              <td className="py-1 pr-2 text-gray-700">Deposit on approval</td>
+              <td className="w-24 py-1 text-right tabular-nums">{deposit == null ? "set above" : `${deposit}%`}</td>
+              <td className="w-12" />
+            </tr>
+            {ms.map((m, i) => (
+              <tr key={m.key}>
+                <td className="py-1 pr-2">
+                  <input className="input py-1 text-sm" value={m.label} readOnly={ro} aria-label={`Milestone ${i + 1} name`} placeholder="e.g. Rough-in complete" onChange={(e) => set(i, { label: e.target.value })} />
+                </td>
+                <td className="py-1">
+                  <div className="flex items-center gap-1">
+                    <input
+                      className="input w-16 py-1 text-right text-sm tabular-nums"
+                      inputMode="numeric"
+                      value={m.percent || ""}
+                      readOnly={ro}
+                      aria-label={`Milestone ${i + 1} percent`}
+                      onChange={(e) => set(i, { percent: Number(e.target.value.replace(/\D/g, "").slice(0, 3)) || 0 })}
+                    />
+                    %
+                  </div>
+                </td>
+                <td className="text-right">
+                  {!ro && (
+                    <button className="icon-btn hover:text-red-700" aria-label={`Remove milestone ${i + 1}`} onClick={() => props.onChange(ms.filter((_, j) => j !== i))}>
+                      <Close />
+                    </button>
+                  )}
+                </td>
+              </tr>
+            ))}
+            <tr className="border-t">
+              <td className="pt-1 text-gray-700">Total</td>
+              <td className={`pt-1 text-right font-medium tabular-nums ${sum === 100 && deposit != null ? "text-green-800" : "text-amber-800"}`}>{sum}%</td>
+              <td />
+            </tr>
+          </tbody>
+        </table>
+      )}
+      {ms.length > 0 && (deposit == null || sum !== 100) && (
+        <p className="mt-1 text-xs text-amber-800">{deposit == null ? "Set the deposit % above. " : ""}Deposit and milestones need to add up to 100%. The last milestone is billed as the final invoice.</p>
+      )}
+      {!ro && (
+        <button
+          className="btn-secondary mt-2 py-1.5"
+          onClick={() =>
+            props.onChange([...ms, { key: newKey(), label: ms.length ? "" : "Rough-in complete", percent: ms.length ? 0 : Math.max(0, 100 - (deposit ?? 0)) }])
+          }
+        >
+          <Plus /> Add milestone
+        </button>
+      )}
+    </div>
+  );
+}
+

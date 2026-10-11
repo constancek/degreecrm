@@ -85,9 +85,15 @@ e2e/                      Playwright happy paths (production build on :3100 agai
 - Client components must not import modules that (transitively) import `@/lib/db`: Turbopack dev then silently
   fails to build the page (500 with a missing build-manifest). Keep client-safe helpers in pure modules
   (`lib/money.ts`, `lib/tiers.ts`, `lib/stages.ts`, `lib/format.ts`) and use `import type` for server types.
-- Proposals: prices come only from the price book when drafting (`resolveLines(…, false)`); owner edits may set any
-  price (`trustPrices`). Totals are recomputed on every write and stored on `ProposalOption`. Only drafts change; a
-  sent proposal gets a revision. T&C are versioned rows (`TermsVersion`), never edited in place.
+- Estimates (Proposal): three packages, tier ids good/better/best shown as Essential/Premium/Supreme (`TIER_LABELS`).
+  Each package has one typed lump sum (`ProposalOption.priceCents`, pre-tax); included lines are scope text (unitCents 0);
+  only optional add-ons carry prices (price book when drafting, any price on edit). Claude never sets prices.
+  Totals = `packageTotals` and are stored on `ProposalOption`. `Proposal.number` (#1001…) is shared by a lead's
+  revisions (`estimateNumber`). Payment schedule = `PaymentMilestone` rows after a fixed deposit, summing to 100%;
+  the owner invoices milestones from the job page; the last one is the final balance invoice. Customers can Decline
+  (status `declined`, lead → estimate_declined) or Request changes (activity + Discord). After signing they pick
+  card / ACH (QuickBooks deposit invoice, polled) / check / Acorn (`chooseDepositMethod`). Only drafts change; a
+  sent estimate gets a revision. T&C are versioned rows (`TermsVersion`), never edited in place.
 - Sales tax: `taxForProperty` = county row, else statewide row; geocodes the property if the county is unknown.
 - Files go through `getBlobStore()` (private Vercel Blob, or `.blobdata/` locally). Never public URLs.
 - `MOCK_INTEGRATIONS=1` swaps QuickBooks, Google Calendar and email for in-process mocks (e2e uses it; the Intuit

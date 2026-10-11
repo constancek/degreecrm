@@ -120,7 +120,7 @@ describe("database url", () => {
   });
 });
 
-import { formatCents, marginPercent, optionTotals, parseDollars, parseRate } from "@/lib/money";
+import { formatCents, marginPercent, packageTotals, parseDollars, parseRate, percentOf } from "@/lib/money";
 import { normalizeCounty } from "@/lib/services/tax";
 import { renderKeyTerms } from "@/lib/services/terms";
 import { depositPercentFor } from "@/lib/services/company";
@@ -134,16 +134,10 @@ describe("money", () => {
     expect(formatCents(500000)).toBe("$5,000");
     expect(parseRate("7.8%")).toBe(780);
   });
-  it("totals exclude optional add-ons and tax every included line", () => {
-    const t = optionTotals(
-      [
-        { qty: 1, unitCents: 100000, isOptional: false },
-        { qty: 3.5, unitCents: 12500, isOptional: false },
-        { qty: 1, unitCents: 99900, isOptional: true },
-      ],
-      780,
-    );
-    expect(t).toEqual({ subtotalCents: 143750, taxCents: 11213, totalCents: 154963 });
+  it("package totals are the lump sum plus sales tax", () => {
+    expect(packageTotals(143750, 780)).toEqual({ subtotalCents: 143750, taxCents: 11213, totalCents: 154963 });
+    expect(packageTotals(null, 780)).toEqual({ subtotalCents: 0, taxCents: 0, totalCents: 0 });
+    expect(percentOf(154963, 40)).toBe(61985);
   });
   it("computes margin only when every line has a cost", () => {
     expect(marginPercent([{ qty: 1, unitCents: 1000, costCents: 600, isOptional: false }])).toBe(40);

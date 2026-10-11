@@ -137,6 +137,7 @@ async function main() {
       {
         tier: "good",
         title: "Standard 50-gallon replacement",
+        priceCents: 245000,
         summary: "Like-for-like replacement of your current heater.",
         highlights: ["Same-day install in most cases", "Old heater hauled away", "Permit and inspection handled", "1-year labor warranty"],
         warrantyText: "1-year labor; 6-year manufacturer tank warranty",
@@ -145,6 +146,7 @@ async function main() {
       {
         tier: "better",
         title: "High-efficiency 50-gallon",
+        priceCents: 315000,
         summary: "A higher-efficiency tank that recovers faster and costs less to run.",
         highlights: ["Lower gas bills than a standard tank", "Faster hot-water recovery", "Old heater hauled away", "2-year labor warranty"],
         warrantyText: "2-year labor; 10-year manufacturer tank warranty",
@@ -153,6 +155,7 @@ async function main() {
       {
         tier: "best",
         title: "Tankless: endless hot water",
+        priceCents: 590000,
         summary: "A wall-mounted tankless heater that never runs out and frees up floor space.",
         highlights: ["Never run out of hot water", "Up to 20-year life", "Frees up basement space", "5-year labor warranty"],
         warrantyText: "5-year labor; 12-year manufacturer heat exchanger warranty",

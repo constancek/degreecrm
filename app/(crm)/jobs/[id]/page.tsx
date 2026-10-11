@@ -6,11 +6,11 @@ import { requireUser } from "@/lib/session";
 import { NotFoundError } from "@/lib/services/actor";
 import { balanceCents, getJob } from "@/lib/services/jobs";
 import { listActiveStaff } from "@/lib/services/users";
-import { formatCents } from "@/lib/money";
+import { formatCents, percentOf } from "@/lib/money";
 import { formatPhone } from "@/lib/phone";
 import { formatAddress } from "@/lib/notifications/discord-embeds";
 import { RecordFinalPaymentForm, ScheduleVisitForm, VisitList } from "@/components/ops/ops-forms";
-import { InvoiceButton, JobDurationForm } from "./job-parts";
+import { InvoiceButton, JobDurationForm, MilestoneInvoiceButton } from "./job-parts";
 
 export const metadata: Metadata = { title: "Job" };
 
@@ -104,6 +104,38 @@ export default async function JobPage({ params }: PageProps<"/jobs/[id]">) {
             </a>
           )}
         </section>
+        {job.proposal.milestones.length > 0 && (
+          <section className="card p-4 text-sm">
+            <h2 className="font-semibold">Payment schedule</h2>
+            <ul className="mt-2 divide-y">
+              {job.proposal.milestones.map((m, i, all) => {
+                const last = i === all.length - 1;
+                return (
+                  <li key={m.id} className="flex min-h-11 items-center justify-between gap-2 py-1.5">
+                    <span>
+                      {m.label} <span className="text-gray-600">· {m.percent}% · {formatCents(m.amountCents ?? percentOf(job.totalCents, m.percent), { cents: true })}</span>
+                      {m.paidAt ? (
+                        <span className="block text-xs text-green-800">Paid</span>
+                      ) : m.invoiceId ? (
+                        <span className="block text-xs text-gray-600">
+                          Invoiced{" "}
+                          {m.invoiceLink && (
+                            <a href={m.invoiceLink} target="_blank" rel="noreferrer" className="text-brand underline">
+                              view
+                            </a>
+                          )}
+                        </span>
+                      ) : last ? (
+                        <span className="block text-xs text-gray-600">Billed as the final invoice</span>
+                      ) : null}
+                    </span>
+                    {isOwner && !last && !m.invoiceId && <MilestoneInvoiceButton jobId={job.id} milestoneId={m.id} label={m.label} />}
+                  </li>
+                );
+              })}
+            </ul>
+          </section>
+        )}
         {isOwner && balance > 0 && !job.quickbooksInvoiceId && ["completed", "in_progress", "scheduled"].includes(job.status) && (
           <section className="card p-4 text-sm">
             <h2 className="font-semibold">Final invoice</h2>

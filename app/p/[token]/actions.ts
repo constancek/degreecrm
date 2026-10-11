@@ -125,3 +125,49 @@ export async function financingAction(token: string): Promise<void> {
   const { recordFinancingInterest } = await import("@/lib/services/payments");
   await recordFinancingInterest(p.id).catch((e) => console.error("[financing click]", e));
 }
+
+// ---- Decline / request changes / how to pay ---------------------------------------
+
+type Outcome = { ok?: boolean; error?: string };
+
+async function friendly(fn: () => Promise<unknown>, fallback: string): Promise<Outcome> {
+  const { ValidationError } = await import("@/lib/services/actor");
+  try {
+    await fn();
+    return { ok: true };
+  } catch (err) {
+    if (err instanceof ValidationError) return { error: err.message };
+    console.error("[estimate]", err);
+    return { error: fallback };
+  }
+}
+
+export async function declineAction(token: string, input: { reason: string; note?: string }): Promise<Outcome> {
+  const p = await authorized(token);
+  if (!p) return { error: "This estimate is no longer available. Please refresh the page." };
+  const { declineEstimate } = await import("@/lib/services/client-proposals");
+  const res = await friendly(async () => declineEstimate(p, input, await requestMeta()), "We couldn't record that just now. Please call us.");
+  if (res.ok) revalidatePath(`/p/${token}`);
+  return res;
+}
+
+export async function requestChangesAction(token: string, message: string): Promise<Outcome> {
+  const p = await authorized(token);
+  if (!p) return { error: "This estimate is no longer available. Please refresh the page." };
+  const { requestChanges } = await import("@/lib/services/client-proposals");
+  return friendly(async () => requestChanges(p, message, await requestMeta()), "We couldn't send that just now. Please call us.");
+}
+
+export async function chooseDepositAction(token: string, choice: string): Promise<Outcome & { payLink?: string | null }> {
+  const p = await authorizedAny(token);
+  if (!p || p.status !== "signed") return { error: "Please refresh the page and try again." };
+  const { DEPOSIT_CHOICES } = await import("@/lib/estimate");
+  if (!(DEPOSIT_CHOICES as readonly string[]).includes(choice)) return { error: "Pick a way to pay." };
+  const { chooseDepositMethod } = await import("@/lib/services/payments");
+  let payLink: string | null | undefined;
+  const res = await friendly(async () => {
+    payLink = (await chooseDepositMethod(p.id, choice as (typeof DEPOSIT_CHOICES)[number])).payLink;
+  }, "We couldn't save that just now. Please try again or call us.");
+  if (res.ok) revalidatePath(`/p/${token}`);
+  return { ...res, payLink };
+}

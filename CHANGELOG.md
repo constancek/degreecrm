@@ -1,5 +1,16 @@
 # Changelog
 
+## Estimates: packages, lump sums, decline, payment choices (2026-10-11)
+
+- Packages renamed Essential / Premium / Supreme. Each has one typed package price; what's included is a scope list
+  without prices; optional add-ons keep their own price. Claude drafts the scope, never the price.
+- Customer view: estimate number (#1001…, kept across revisions), date, valid-until (30 days), Choose this package →
+  Approve & sign, Request changes, Decline (reason). Staff see responses on the estimate page.
+- After signing the customer picks card, bank transfer (QuickBooks invoice, recorded when it clears), check / in
+  person (office alerted), or Acorn financing.
+- Payment schedule: deposit + milestones (must total 100%) shown on the estimate and PDF; the owner invoices each
+  milestone from the job page and the final invoice bills only what's left.
+
 ## Tech dashboard, audit fixes (2026-10-10)
 
 - Techs land on **Today** (/my-day) and see only Today + Calendar (+ Account for Google Calendar). Pipeline, jobs,

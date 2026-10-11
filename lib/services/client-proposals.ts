@@ -7,7 +7,10 @@ import { appUrl } from "@/lib/env";
 import { normalizeEmail } from "@/lib/phone";
 import { leadStageEmbed } from "@/lib/notifications/discord-embeds";
 import type { Prisma } from "@/generated/prisma/client";
-import { SYSTEM } from "./actor";
+import { SYSTEM, ValidationError } from "./actor";
+import { estimateNumber } from "@/lib/estimate";
+import { changeStage } from "./leads";
+import { alertOwner } from "./messages";
 import { recordActivity } from "./activity";
 import { enqueueDiscord, flushOutboxSoon } from "./outbox";
 
@@ -19,11 +22,12 @@ const clientInclude = {
   options: { orderBy: { sortOrder: "asc" }, include: { lineItems: { orderBy: { sortOrder: "asc" } } } },
   lead: { include: { customer: true, property: true, assignedTo: { select: { name: true } } } },
   terms: true,
+  milestones: { orderBy: { sortOrder: "asc" } },
 } satisfies Prisma.ProposalInclude;
 
 export type ClientProposal = Prisma.ProposalGetPayload<{ include: typeof clientInclude }>;
 
-export type ClientState = "ok" | "expired" | "superseded" | "locked" | "signed";
+export type ClientState = "ok" | "expired" | "superseded" | "locked" | "signed" | "declined";
 
 export async function loadByToken(token: string): Promise<ClientProposal | null> {
   if (!/^[A-Za-z0-9_-]{24,64}$/.test(token)) return null;
@@ -33,6 +37,7 @@ export async function loadByToken(token: string): Promise<ClientProposal | null>
 export function clientState(p: ClientProposal, now = new Date()): ClientState {
   if (p.lockedAt) return "locked";
   if (p.status === "signed") return "signed";
+  if (p.status === "declined") return "declined";
   if (p.status === "superseded") return "superseded";
   if (p.expiresAt && p.expiresAt < now) return "expired";
   return "ok";
@@ -172,6 +177,49 @@ export async function requestFreshLink(p: ClientProposal) {
     await enqueueDiscord(tx, embed);
   });
   await flushOutboxSoon();
+}
+
+// ---- Decline / request changes ----------------------------------------------
+
+/** Customer declines on the estimate page: estimate closed, lead → Declined (follow-up texts start), owner told. */
+export async function declineEstimate(p: ClientProposal, input: { reason: string; note?: string }, meta: { ip: string | null }) {
+  const reason = input.reason.trim().slice(0, 100);
+  if (!reason) throw new ValidationError("Pick a reason");
+  const note = input.note?.trim().slice(0, 1000) || null;
+  const text = note ? `${reason}: ${note}` : reason;
+  await db.$transaction(async (tx) => {
+    await tx.proposal.update({ where: { id: p.id }, data: { status: "declined", declinedAt: new Date(), declineReason: text } });
+    await tx.lead.update({ where: { id: p.leadId }, data: { lostReason: text.slice(0, 300) } });
+    await recordActivity(tx, actor, {
+      type: "estimate_declined",
+      leadId: p.leadId,
+      body: `Customer declined estimate ${estimateNumber(p)}: ${text}`,
+      data: { proposalId: p.id, ip: meta.ip },
+    });
+  });
+  await changeStage(actor, p.leadId, "estimate_declined");
+  await alertOwner(`${p.lead.customer.name} declined estimate ${estimateNumber(p)} (${text}). ${appUrl()}/leads/${p.leadId}`);
+}
+
+/** Customer asks for changes instead of declining: logged on the lead and sent to the owner. */
+export async function requestChanges(p: ClientProposal, message: string, meta: { ip: string | null }) {
+  const text = message.trim().slice(0, 2000);
+  if (text.length < 3) throw new ValidationError("Tell us what you'd like changed");
+  await db.$transaction(async (tx) => {
+    await recordActivity(tx, actor, {
+      type: "change_requested",
+      leadId: p.leadId,
+      body: `Change request on estimate ${estimateNumber(p)}: ${text}`,
+      data: { proposalId: p.id, ip: meta.ip },
+    });
+    const lead = await tx.lead.findUniqueOrThrow({ where: { id: p.leadId }, include: { customer: true, property: true, assignedTo: { select: { name: true } } } });
+    const embed = leadStageEmbed(lead);
+    embed.embeds![0]!.title = `Change request on estimate ${estimateNumber(p)}: ${lead.title}`;
+    embed.embeds![0]!.description = text.slice(0, 1000);
+    await enqueueDiscord(tx, embed);
+  });
+  await flushOutboxSoon();
+  await alertOwner(`${p.lead.customer.name} asked for changes to estimate ${estimateNumber(p)}: "${text.slice(0, 300)}" ${appUrl()}/leads/${p.leadId}`);
 }
 
 // ---- "Present to customer": staff open the proposal on their own device without the phone check ----

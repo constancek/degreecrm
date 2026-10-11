@@ -68,7 +68,7 @@ export async function blankProposalAction(leadId: string): Promise<GenerateState
     const empty = (tier: "good" | "better" | "best", title: string) => ({ tier, title, lineItems: [] });
     const content: ProposalContentInput = {
       summary: "",
-      options: [empty("good", "Good"), empty("better", "Better"), empty("best", "Best")],
+      options: [empty("good", "Essential"), empty("better", "Premium"), empty("best", "Supreme")],
     };
     id = (await createProposalDraft(user, leadId, content)).id;
   } catch (err) {

@@ -17,9 +17,9 @@ import { DEFAULT_TAX_RATES, saveTaxRates } from "@/lib/services/tax";
 import { createProposalDraft, sendProposal } from "@/lib/services/proposals";
 import { loadByToken } from "@/lib/services/client-proposals";
 import { recordPaperApproval, signProposal } from "@/lib/services/signing";
-import { chargeDeposit, recordManualDeposit } from "@/lib/services/payments";
+import { chargeDeposit, chooseDepositMethod, pollDepositInvoices, recordManualDeposit } from "@/lib/services/payments";
 import { pollCalendars, rescheduleVisit, scheduleVisit, syncVisit, updateVisitStatus } from "@/lib/services/visits";
-import { pollInvoices, requestReviews } from "@/lib/services/jobs";
+import { completeJob, createMilestoneInvoice, pollInvoices, requestReviews } from "@/lib/services/jobs";
 import { ensureDefaultSequences, nextAllowedSendTime, processDueEnrollments } from "@/lib/services/sequences";
 import { handleInbound, verifyQuoSignature } from "@/lib/services/messages";
 import { findSlots } from "@/lib/services/dispatch";
@@ -72,7 +72,7 @@ async function sentProposal(trade: "hvac" | "plumbing" = "hvac") {
     trade,
     assignedToId: tech.id,
   });
-  const opt = (tier: "good" | "better" | "best") => ({ tier, title: `${tier}`, lineItems: [{ description: "Unit", qty: 1, priceBookItemId: item.id }] });
+  const opt = (tier: "good" | "better" | "best") => ({ tier, title: `${tier}`, priceCents: 400000, lineItems: [{ description: "Unit", qty: 1, priceBookItemId: item.id }] });
   const draft = await createProposalDraft(owner, lead.id, { summary: "Options", options: [opt("good"), opt("better"), opt("best")] });
   const { link } = await sendProposal(owner, draft.id, { textCustomer: false });
   const p = (await loadByToken(link.split("/p/")[1]!))!;
@@ -161,6 +161,55 @@ describe("deposit", () => {
     await expect(chargeDeposit(p.id, "tok_declined", META)).rejects.toBeInstanceOf(ValidationError);
     expect(await db.payment.count({ where: { proposalId: p.id, status: "failed" } })).toBe(1);
     expect(await db.job.count()).toBe(0);
+  });
+
+  it("bank transfer: a QuickBooks deposit invoice; the deposit is recorded when it clears", async () => {
+    const { p } = await signed();
+    const { payLink } = await chooseDepositMethod(p.id, "ach");
+    expect(payLink).toMatch(/example\.com\/invoice\//);
+    expect((await chooseDepositMethod(p.id, "ach")).payLink).toBe(payLink); // no second invoice
+    const after = await db.proposal.findUniqueOrThrow({ where: { id: p.id } });
+    expect(after).toMatchObject({ depositChoice: "ach", depositInvoiceLink: payLink });
+    expect(await pollDepositInvoices()).toBe(0); // not paid yet
+    qbo.state.invoices.set(after.depositInvoiceId!, 0);
+    expect(await pollDepositInvoices()).toBe(1);
+    expect(await db.payment.findFirstOrThrow({ where: { proposalId: p.id } })).toMatchObject({ method: "ach", amountCents: 215600, status: "succeeded" });
+    expect(await db.job.findUniqueOrThrow({ where: { proposalId: p.id } })).toMatchObject({ depositCents: 215600 });
+  });
+
+  it("check / in person: choice logged, office alerted, no job until the deposit is recorded", async () => {
+    const { p, lead } = await signed();
+    await chooseDepositMethod(p.id, "check");
+    expect((await db.proposal.findUniqueOrThrow({ where: { id: p.id } })).depositChoice).toBe("check");
+    expect(await db.activity.count({ where: { leadId: lead.id, type: "deposit_choice" } })).toBe(1);
+    expect(await db.job.count()).toBe(0);
+  });
+
+  it("payment schedule: milestone invoices during the job; the final invoice bills only what's left", async () => {
+    const { p, owner } = await signed();
+    // Deposit 50% (company rule under $5k) + rough-in 40% + completion 10%.
+    await db.paymentMilestone.createMany({
+      data: [
+        { proposalId: p.id, label: "Rough-in complete", percent: 40, sortOrder: 0 },
+        { proposalId: p.id, label: "Completion", percent: 10, sortOrder: 1 },
+      ],
+    });
+    await chargeDeposit(p.id, "tok_good_card", META);
+    const job = await db.job.findUniqueOrThrow({ where: { proposalId: p.id } });
+    const [roughIn, completion] = await db.paymentMilestone.findMany({ where: { proposalId: p.id }, orderBy: { sortOrder: "asc" } });
+
+    await expect(createMilestoneInvoice(owner, job.id, completion!.id)).rejects.toThrow(/final invoice/);
+    const m = await createMilestoneInvoice(owner, job.id, roughIn!.id);
+    expect(m).toMatchObject({ amountCents: 172480 }); // 40% of $4,312
+    expect(quo.sent.at(-1)!.content).toContain("rough-in complete payment of $1,724.80");
+
+    qbo.state.invoices.set(m.invoiceId!, 0);
+    await pollInvoices();
+    expect(await db.payment.findFirstOrThrow({ where: { jobId: job.id, kind: "progress" } })).toMatchObject({ amountCents: 172480 });
+
+    await completeJob(owner, job.id);
+    const done = await db.job.findUniqueOrThrow({ where: { id: job.id } });
+    expect(qbo.state.invoices.get(done.quickbooksInvoiceId!)).toBe(43120); // 4,312 − 2,156 − 1,724.80
   });
 
   it("owner can record a check deposit", async () => {

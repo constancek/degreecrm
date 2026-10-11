@@ -290,6 +290,8 @@ enum ProposalStatus {
   sent
   viewed
   signed
+  /// Customer tapped Decline on the estimate page.
+  declined
   superseded
 }
 
@@ -361,6 +363,8 @@ model Proposal {
   id                   String         @id @default(cuid())
   leadId               String
   version              Int
+  /// Estimate number shown to the customer (#1001…). A revision keeps its original's number.
+  number               Int            @default(autoincrement())
   status               ProposalStatus @default(draft)
   /// Random 32-char link token; set when sent.
   token                String?        @unique
@@ -394,18 +398,26 @@ model Proposal {
   signedOptionId       String?
   /// When the deposit was recorded (card, check, financing…).
   depositPaidAt        DateTime?
+  /// How the customer chose to pay the deposit after signing: card | ach | check | financing.
+  depositChoice        String?
+  /// Bank transfer (ACH): a QuickBooks invoice for the deposit; its pay page takes bank payments.
+  depositInvoiceId     String?
+  depositInvoiceLink   String?
+  declinedAt           DateTime?
+  declineReason        String?
   quickbooksEstimateId String?
   createdById          String?
   createdAt            DateTime       @default(now())
   updatedAt            DateTime       @updatedAt
 
-  lead      Lead             @relation(fields: [leadId], references: [id], onDelete: Cascade)
-  createdBy User?            @relation(fields: [createdById], references: [id], onDelete: SetNull)
-  terms     TermsVersion?    @relation(fields: [termsVersionId], references: [id], onDelete: Restrict)
-  options   ProposalOption[]
-  signature Signature?
-  payments  Payment[]
-  job       Job?
+  lead       Lead               @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  createdBy  User?              @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  terms      TermsVersion?      @relation(fields: [termsVersionId], references: [id], onDelete: Restrict)
+  options    ProposalOption[]
+  milestones PaymentMilestone[]
+  signature  Signature?
+  payments   Payment[]
+  job        Job?
 
   @@unique([leadId, version])
 }
@@ -421,6 +433,8 @@ model ProposalOption {
   warrantyText  String   @default("")
   sortOrder     Int
   /// Kept in sync with line items by the service (required lines only).
+  /// The package price (pre-tax) the owner or tech types in. Included lines are scope text only.
+  priceCents    Int?
   subtotalCents Int      @default(0)
   taxCents      Int      @default(0)
   totalCents    Int      @default(0)
@@ -750,4 +764,24 @@ model BookingRequest {
 
   @@index([status])
   @@index([leadId])
+}
+
+/// Payment schedule after the deposit (e.g. rough-in 40%, completion 30%). Deposit % + milestones = 100%.
+/// The office invoices each milestone from the job page; the last one is the final balance invoice.
+model PaymentMilestone {
+  id          String    @id @default(cuid())
+  proposalId  String
+  label       String
+  percent     Int
+  sortOrder   Int
+  amountCents Int?
+  invoiceId   String?
+  invoiceLink String?
+  invoicedAt  DateTime?
+  paidAt      DateTime?
+  createdAt   DateTime  @default(now())
+
+  proposal Proposal @relation(fields: [proposalId], references: [id], onDelete: Cascade)
+
+  @@index([proposalId])
 }

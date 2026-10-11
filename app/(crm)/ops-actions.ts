@@ -203,6 +203,18 @@ export async function recordDepositAction(proposalId: string, _prev: Result | un
   return { ok: "Deposit recorded" };
 }
 
+export async function milestoneInvoiceAction(jobId: string, milestoneId: string): Promise<Result> {
+  const user = await requireUser();
+  try {
+    const { createMilestoneInvoice } = await import("@/lib/services/jobs");
+    await createMilestoneInvoice(user, jobId, milestoneId);
+  } catch (err) {
+    return fail(err);
+  }
+  refresh(`/jobs/${jobId}`);
+  return { ok: "Invoice sent" };
+}
+
 export async function finalInvoiceAction(jobId: string): Promise<Result> {
   const user = await requireUser();
   if (user.role !== "owner") return { error: "Only the owner can invoice" };

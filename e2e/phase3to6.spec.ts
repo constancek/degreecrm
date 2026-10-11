@@ -27,7 +27,7 @@ test("customer signs and pays the deposit; owner schedules; tech completes; invo
   await c.goto(link);
   await c.getByLabel(/last 4 digits/).fill("0112");
   await c.getByRole("button", { name: "View proposal" }).click();
-  await c.locator('[data-option="better"]').getByRole("button", { name: "Choose this option" }).click();
+  await c.locator('[data-option="better"]').getByRole("button", { name: "Choose this package" }).click();
   await c.getByLabel(/agree to the full/).check();
   await expect(c.getByLabel("Your full name")).toHaveValue("James & Linda Porter");
   await c.getByLabel("Email for your signed copy").fill("porters@example.com");
@@ -48,6 +48,9 @@ test("customer signs and pays the deposit; owner schedules; tech completes; invo
   const { readFileSync } = await import("node:fs");
   expect(readFileSync((await dl.path())!).subarray(0, 4).toString()).toBe("%PDF");
 
+  // After signing: estimate number and dates were shown; now pick how to pay.
+  await expect(c.getByText("How would you like to pay?")).toBeVisible();
+  await c.getByLabel(/Credit or debit card/).check();
   await c.getByLabel("Card number").fill("4111 1111 1111 1111");
   await c.getByLabel("Expires (MM/YY)").fill("12/30");
   await c.getByLabel("CVC").fill("123");
@@ -78,13 +81,13 @@ test("customer signs and pays the deposit; owner schedules; tech completes; invo
   const t = await techCtx.newPage();
   await login(t, "tech1@example.com");
   await t.goto(`/my-day?day=${tomorrow}`);
-  // The next stop is open on Today with its one next button.
-  const card = t.locator("[data-visit]").first();
-  await expect(card).toContainText("James & Linda Porter");
+  // Other tests may book this tech tomorrow too: open the Porters' appointment by name.
+  await t.getByRole("link", { name: "James & Linda Porter" }).first().click();
+  const card = t.locator("[data-visit]");
   await card.getByRole("button", { name: "On my way" }).click();
   await card.getByRole("button", { name: "Start work" }).click();
   await card.getByRole("button", { name: "Complete" }).click();
-  await expect(t.locator("[data-visit]").filter({ hasText: "James & Linda Porter" })).toContainText("Done");
+  await expect(card).toContainText("Done");
   await techCtx.close();
 
   // ---- Owner: job invoiced via (mock) QuickBooks ----

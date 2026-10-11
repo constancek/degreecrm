@@ -2,7 +2,8 @@
 // so all three always show the same numbers.
 
 import type { Tier } from "@/generated/prisma/enums";
-import { lineTotalCents } from "@/lib/money";
+import { lineTotalCents, percentOf } from "@/lib/money";
+import { estimateNumber } from "@/lib/estimate";
 import { formatPhone } from "@/lib/phone";
 import { formatAddress } from "@/lib/notifications/discord-embeds";
 import { companyAddressLine, depositPercentFor, type CompanyProfile } from "@/lib/services/company";
@@ -11,6 +12,8 @@ import { renderKeyTerms } from "@/lib/services/terms";
 type SourceProposal = {
   id: string;
   version: number;
+  number: number;
+  createdAt: Date;
   summary: string;
   assumptions: string[];
   exclusions: string[];
@@ -22,6 +25,7 @@ type SourceProposal = {
   expiresAt: Date | null;
   sentAt: Date | null;
   terms: { version: number; keyTerms: string } | null;
+  milestones: { label: string; percent: number }[];
   lead: { title: string; customer: { name: string }; property: Parameters<typeof formatAddress>[0] };
   options: {
     id: string;
@@ -48,6 +52,10 @@ export function buildProposalView(p: SourceProposal, company: CompanyProfile, fa
   return {
     id: p.id,
     version: p.version,
+    /** "#1001" or "#1001 · rev 2". */
+    number: estimateNumber(p),
+    /** Issue date: when it was sent, else when it was written (preview of a draft). */
+    issuedOn: DATE.format(p.sentAt ?? p.createdAt),
     jobTitle: p.lead.title,
     customerName: p.lead.customer.name,
     address: formatAddress(p.lead.property),
@@ -84,7 +92,11 @@ export function buildProposalView(p: SourceProposal, company: CompanyProfile, fa
         taxCents: o.taxCents,
         totalCents: o.totalCents,
         depositPercent,
-        depositCents: Math.round((o.totalCents * depositPercent) / 100),
+        depositCents: percentOf(o.totalCents, depositPercent),
+        /** Payment schedule for this package: deposit first, then the milestones (empty = deposit + balance). */
+        schedule: p.milestones.length
+          ? [{ label: "Deposit on approval", percent: depositPercent }, ...p.milestones].map((m) => ({ ...m, amountCents: percentOf(o.totalCents, m.percent) }))
+          : [],
         keyTerms: renderKeyTerms(keyTermsSource, { depositPercent, expires }),
         items: o.lineItems.map((l) => ({
           id: l.id,

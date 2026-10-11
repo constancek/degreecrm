@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState, useState, useTransition } from "react";
-import { finalInvoiceAction, updateJobAction } from "../../ops-actions";
+import { finalInvoiceAction, milestoneInvoiceAction, updateJobAction } from "../../ops-actions";
 
 export function InvoiceButton({ jobId }: { jobId: string }) {
   const [pending, start] = useTransition();
@@ -21,6 +21,23 @@ export function InvoiceButton({ jobId }: { jobId: string }) {
         {pending ? "Creating…" : "Create & send final invoice"}
       </button>
       {msg && <p className="mt-1 text-sm">{msg}</p>}
+    </>
+  );
+}
+
+export function MilestoneInvoiceButton({ jobId, milestoneId, label }: { jobId: string; milestoneId: string; label: string }) {
+  const [pending, start] = useTransition();
+  const [msg, setMsg] = useState<{ error?: string; ok?: string } | null>(null);
+  return (
+    <>
+      <button className="btn-secondary py-1.5" disabled={pending} aria-label={`Invoice ${label}`} onClick={() => start(async () => setMsg(await milestoneInvoiceAction(jobId, milestoneId)))}>
+        {pending ? "Sending…" : "Invoice"}
+      </button>
+      {msg?.error && (
+        <p role="alert" className="text-xs text-red-700">
+          {msg.error}
+        </p>
+      )}
     </>
   );
 }

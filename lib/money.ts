@@ -32,11 +32,16 @@ export function lineTotalCents(item: { qty: number; unitCents: number }): number
   return Math.round(item.qty * item.unitCents);
 }
 
-/** Totals for an option. Optional add-ons are excluded; every included line is taxable. */
-export function optionTotals(items: { qty: number; unitCents: number; isOptional: boolean }[], taxRateBps: number) {
-  const subtotalCents = items.filter((i) => !i.isOptional).reduce((sum, i) => sum + lineTotalCents(i), 0);
+/** Totals for a package: its lump-sum price plus sales tax. Optional add-ons are priced on their own lines. */
+export function packageTotals(priceCents: number | null, taxRateBps: number) {
+  const subtotalCents = Math.max(0, priceCents ?? 0);
   const taxCents = Math.round((subtotalCents * taxRateBps) / 10_000);
   return { subtotalCents, taxCents, totalCents: subtotalCents + taxCents };
+}
+
+/** Even split of the payment schedule: amount for `percent` of a total, in cents. */
+export function percentOf(totalCents: number, percent: number) {
+  return Math.round((totalCents * percent) / 100);
 }
 
 /** Gross margin % of price over cost, or null when any line has no cost. */
