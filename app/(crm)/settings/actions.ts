@@ -8,6 +8,7 @@ import { ForbiddenError, ValidationError } from "@/lib/services/actor";
 import { removeLogo, saveCompanyDetails, saveLogo } from "@/lib/services/company";
 import { saveTerms } from "@/lib/services/terms";
 import { saveTaxRates } from "@/lib/services/tax";
+import { addTech } from "@/lib/services/users";
 
 export type SettingsState = { error?: string; ok?: string } | undefined;
 
@@ -101,4 +102,15 @@ export async function saveTaxRatesAction(_prev: SettingsState, fd: FormData): Pr
   }
   revalidatePath("/settings");
   return { ok: "Tax rates saved" };
+}
+
+export async function addTechAction(_prev: SettingsState, fd: FormData): Promise<SettingsState> {
+  const user = await requireUser();
+  try {
+    const tech = await addTech(user, { name: s(fd, "name"), email: s(fd, "email") });
+    revalidatePath("/settings");
+    return { ok: `${tech.name} can now sign in with Google as ${tech.email}.` };
+  } catch (err) {
+    return fail(err);
+  }
 }

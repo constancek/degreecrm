@@ -113,6 +113,8 @@ e2e/                      Playwright happy paths (production build on :3100 agai
 - Calendar page: Google events are read live, never stored. Titles/links only for the viewer's own calendar; others see
   "Busy" (the privacy policy promises this). CRM-created events (crmVisitId) are skipped there and drawn from the DB.
 - Times: store UTC, show/compute in America/New_York (`easternMidnight`, `easternYmd` in dispatch.ts).
+- Adding a tech: owner uses Settings → Team → Add a tech (`addTech` creates an active User row, which is enough to sign
+  in; no ALLOWED_EMAILS change). Deactivating the row blocks sign-in.
 - Techs see only Today + Calendar (+ Account). Office pages use `requireOffice()` (tech → /my-day). A visit's buttons
   come from `visitPhase()`: only the current step's action plus the exits that fit; don't add buttons outside it.
 - Tailwind v4: borders default to gray-200 via a base rule in globals.css (v4's default is currentColor). Shared classes are `@utility` blocks in `app/globals.css` (`input`, `label`, `btn-primary`, `btn-secondary`, `card`).

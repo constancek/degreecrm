@@ -5,6 +5,7 @@ import { formatRate } from "@/lib/money";
 import type { CompanyProfile } from "@/lib/services/company";
 import { Close } from "@/components/ui/icons";
 import {
+  addTechAction,
   removeLogoAction,
   saveCompanyAction,
   saveTaxRatesAction,
@@ -15,7 +16,7 @@ import {
 
 function Status({ state }: { state: SettingsState }) {
   if (state?.error) return <p role="alert" className="text-sm text-red-700">{state.error}</p>;
-  if (state?.ok) return <p className="text-sm text-green-700">{state.ok}</p>;
+  if (state?.ok) return <p role="status" className="text-sm text-green-700">{state.ok}</p>;
   return null;
 }
 
@@ -241,5 +242,35 @@ export function TaxSettings({ rates }: { rates: { state: string; county: string;
         </div>
       </form>
     </section>
+  );
+}
+
+/** Owner adds a tech by name + Google address; they can sign in right away. */
+export function AddTechForm() {
+  const [state, action, pending] = useActionState(addTechAction, undefined);
+  return (
+    <form action={action} className="mt-4 space-y-3 border-t pt-4" key={state?.ok}>
+      <h3 className="text-sm font-semibold">Add a tech</h3>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div>
+          <label className="label" htmlFor="tech-name">
+            Name
+          </label>
+          <input id="tech-name" name="name" className="input" autoComplete="off" required />
+        </div>
+        <div>
+          <label className="label" htmlFor="tech-email">
+            Google sign-in email
+          </label>
+          <input id="tech-email" name="email" type="email" className="input" autoComplete="off" required />
+        </div>
+      </div>
+      <div className="flex items-center gap-3">
+        <button className="btn-primary" disabled={pending}>
+          {pending ? "Adding…" : "Add tech"}
+        </button>
+        <Status state={state} />
+      </div>
+    </form>
   );
 }

@@ -11,7 +11,7 @@ import { formatPhone } from "@/lib/phone";
 import { getCompany } from "@/lib/services/company";
 import { PLACEHOLDER_KEY_TERMS, PLACEHOLDER_TERMS, currentTerms } from "@/lib/services/terms";
 import { listTaxRates } from "@/lib/services/tax";
-import { CompanySettings, TaxSettings, TermsSettings } from "./owner-settings";
+import { CompanySettings, TaxSettings, TermsSettings, AddTechForm } from "./owner-settings";
 import { CalendarPanel, IntegrationsPanel } from "./integrations";
 import { connectionStatus, getIncomeAccountSetting, getQuickBooksClient } from "@/lib/services/quickbooks-auth";
 import Link from "next/link";
@@ -181,10 +181,7 @@ export default async function SettingsPage({ searchParams }: PageProps<"/setting
       {user.role === "owner" && (
         <section className="card p-4">
           <h2 className="font-semibold">Team</h2>
-          <p className="mt-1 text-sm text-gray-600">
-            To add a tech, add their Google address to <code>ALLOWED_EMAILS</code>. They appear here after their first
-            sign-in.
-          </p>
+          <p className="mt-1 text-sm text-gray-600">Techs sign in with Google using the address you add here.</p>
           <ul className="mt-2 divide-y text-sm">
             {staff.map((s) => (
               <li key={s.id} className="flex justify-between py-2">
@@ -199,6 +196,7 @@ export default async function SettingsPage({ searchParams }: PageProps<"/setting
               </li>
             ))}
           </ul>
+          <AddTechForm />
         </section>
       )}
     </div>

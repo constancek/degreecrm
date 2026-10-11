@@ -5,7 +5,7 @@ import { createMockGeocodingClient, setGeocodingClient } from "@/lib/integration
 import { assignLead, changeStage, createLead, getLead, listBoardLeads, logNote } from "@/lib/services/leads";
 import { processOutbox } from "@/lib/services/outbox";
 import { submitWebLead } from "@/lib/services/intake";
-import { isAllowedToSignIn, upsertStaffUser } from "@/lib/services/users";
+import { addTech, isAllowedToSignIn, upsertStaffUser } from "@/lib/services/users";
 import { runTick } from "@/lib/jobs/tick";
 import { setDiscordStages } from "@/lib/services/settings";
 import { ForbiddenError, NotFoundError } from "@/lib/services/actor";
@@ -154,6 +154,19 @@ describe("staff sign-in", () => {
     expect(tech.role).toBe("tech");
     await db.user.update({ where: { id: tech.id }, data: { active: false } });
     expect(await isAllowedToSignIn("tech@test.dev")).toBe(false);
+  });
+
+  it("owner adds a tech in Settings: they can sign in, keep the name, and stay a tech", async () => {
+    const owner = await makeUser("owner", "owner@test.dev");
+    expect(await isAllowedToSignIn("degree.tech@test.dev")).toBe(false);
+    await addTech(owner, { name: "Degree Tech", email: " Degree.Tech@test.dev " });
+    expect(await isAllowedToSignIn("degree.tech@test.dev")).toBe(true);
+    const signedIn = await upsertStaffUser({ email: "degree.tech@test.dev", name: "Google Name" });
+    expect(signedIn).toMatchObject({ name: "Degree Tech", role: "tech" });
+
+    const tech = await makeUser("tech", "tech2@test.dev");
+    await expect(addTech(tech, { name: "X", email: "x@test.dev" })).rejects.toBeInstanceOf(ForbiddenError);
+    await expect(addTech(owner, { name: "Me", email: "owner@test.dev" })).rejects.toThrow(/owner/);
   });
 });
 
