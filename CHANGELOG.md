@@ -4,7 +4,7 @@
 
 - Packages renamed Essential / Premium / Supreme. Each has one typed package price; what's included is a scope list
   without prices; optional add-ons keep their own price. Claude drafts the scope, never the price.
-- Customer view: estimate number (#1001…, kept across revisions), date, valid-until (30 days), Choose this package →
+- Customer view: estimate number (#27819…, kept across revisions), date, valid-until (30 days), Choose this package →
   Approve & sign, Request changes, Decline (reason). Staff see responses on the estimate page.
 - After signing the customer picks card, bank transfer (QuickBooks invoice, recorded when it clears), check / in
   person (office alerted), or Acorn financing.

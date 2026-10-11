@@ -363,7 +363,7 @@ model Proposal {
   id                   String         @id @default(cuid())
   leadId               String
   version              Int
-  /// Estimate number shown to the customer (#1001…). A revision keeps its original's number.
+  /// Estimate number shown to the customer (#27819…). A revision keeps its original's number.
   number               Int            @default(autoincrement())
   status               ProposalStatus @default(draft)
   /// Random 32-char link token; set when sent.

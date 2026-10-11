@@ -67,7 +67,7 @@ test("owner sets up company + price book, drafts with Claude, prices, sends; cus
   await c.getByLabel(/last 4 digits/).fill("0111");
   await c.getByRole("button", { name: "View proposal" }).click();
 
-  await expect(c.getByText(/^#\d{4}$/)).toBeVisible(); // estimate number
+  await expect(c.getByText(/^#\d{5,}$/)).toBeVisible(); // estimate number
   await expect(c.getByText("Valid until")).toBeVisible();
   await expect(c.locator("[data-option]")).toHaveCount(3);
   await expect(c.locator('[data-option="good"]')).toContainText("Essential");

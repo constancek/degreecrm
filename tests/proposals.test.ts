@@ -86,7 +86,7 @@ describe("drafting", () => {
       ],
     });
     expect(p.version).toBe(1);
-    expect(p.number).toBeGreaterThan(1000);
+    expect(p.number).toBeGreaterThanOrEqual(27819);
     expect(p.taxRateBps).toBe(780);
     expect(p.taxLabel).toContain("Hamilton County, OH");
     const good = p.options.find((o) => o.tier === "good")!;

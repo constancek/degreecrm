@@ -7,7 +7,7 @@ export const DECLINE_REASONS = ["Price is too high", "Getting other quotes", "No
 export const DEPOSIT_CHOICES = ["card", "ach", "check", "financing"] as const;
 export type DepositChoice = (typeof DEPOSIT_CHOICES)[number];
 
-/** "#1001", or "#1001 · rev 2" for a revision. */
+/** "#27819", or "#27819 · rev 2" for a revision. */
 export function estimateNumber(p: { number: number; version: number }) {
   return `#${p.number}${p.version > 1 ? ` · rev ${p.version}` : ""}`;
 }

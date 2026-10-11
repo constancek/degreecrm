@@ -88,7 +88,7 @@ e2e/                      Playwright happy paths (production build on :3100 agai
 - Estimates (Proposal): three packages, tier ids good/better/best shown as Essential/Premium/Supreme (`TIER_LABELS`).
   Each package has one typed lump sum (`ProposalOption.priceCents`, pre-tax); included lines are scope text (unitCents 0);
   only optional add-ons carry prices (price book when drafting, any price on edit). Claude never sets prices.
-  Totals = `packageTotals` and are stored on `ProposalOption`. `Proposal.number` (#1001…) is shared by a lead's
+  Totals = `packageTotals` and are stored on `ProposalOption`. `Proposal.number` (#27819…) is shared by a lead's
   revisions (`estimateNumber`). Payment schedule = `PaymentMilestone` rows after a fixed deposit, summing to 100%;
   the owner invoices milestones from the job page; the last one is the final balance invoice. Customers can Decline
   (status `declined`, lead → estimate_declined) or Request changes (activity + Discord). After signing they pick
